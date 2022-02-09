@@ -4,9 +4,7 @@
 					xmlns:not_android="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 					xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 					xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-					xmlns:local="using:GenericApp.Views.Controls"
 					xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-					xmlns:localConverters="using:GenericApp.Views.Converters"
 					xmlns:u="using:Uno.UI.Controls"
 					xmlns:xamarin="http://uno.ui/xamarin"
 					xmlns:ios="http://uno.ui/ios"
@@ -21,6 +19,7 @@
 					xmlns:native_android="using:Android.Widget"
 					xmlns:itemswrapgridpresent="http://schemas.microsoft.com/winfx/2006/xaml/presentation?IsTypePresent(Windows.UI.Xaml.Controls.ItemsWrapGrid)"
 					xmlns:itemswrapgridnotpresent="http://schemas.microsoft.com/winfx/2006/xaml/presentation?IsTypeNotPresent(Windows.UI.Xaml.Controls.ItemsWrapGrid)"
+					xmlns:uwpOnly="http://schemas.microsoft.com/winfx/2006/xaml/presentation?IsTypeNotPresent(Microsoft.UI.Xaml.FrameworkElement)"
 					xmlns:uBehaviors="using:Uno.UI.Behaviors"
 					mc:Ignorable="d xamarin ios android not_wasm wasm netstdref not_netstdref macos skia">
 
@@ -553,6 +552,7 @@
 						<Grid.RowDefinitions>
 							<RowDefinition Height="Auto" />
 							<RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
 						</Grid.RowDefinitions>
 						<Grid.ColumnDefinitions>
 							<ColumnDefinition Width="*" />
@@ -767,6 +767,13 @@
 										   HorizontalAlignment="Right"
 										   VerticalAlignment="Center"
 										   AutomationProperties.AccessibilityView="Raw" />
+						<ContentPresenter x:Name="DescriptionPresenter"
+										   Grid.Row="2"
+										   Grid.Column="0"
+										   Grid.ColumnSpan="2"
+										   Foreground="{ThemeResource SystemControlDescriptionTextForegroundBrush}"
+										   Content="{TemplateBinding Description}"
+										   x:Load="False"/>
 						<Popup x:Name="Popup">
 							<Border x:Name="PopupBorder"
 									Background="{ThemeResource SystemControlBackgroundChromeMediumLowBrush}"
@@ -4428,6 +4435,7 @@
 						<Grid.RowDefinitions>
 							<RowDefinition Height="Auto" />
 							<RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
 						</Grid.RowDefinitions>
 						<Border x:Name="BackgroundElement"
 								Grid.Row="1"
@@ -4486,6 +4494,14 @@
 								FontSize="{TemplateBinding FontSize}"
 								VerticalAlignment="Stretch"
 								MinWidth="34" />
+						<ContentPresenter x:Name="DescriptionPresenter"
+                            Grid.Row="2"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="2"
+                            Content="{TemplateBinding Description}"
+                            Foreground="{ThemeResource SystemControlDescriptionTextForegroundBrush}"
+                            AutomationProperties.AccessibilityView="Raw"
+                            x:Load="False"/>
 					</Grid>
 				</ControlTemplate>
 			</Setter.Value>
@@ -4586,8 +4602,8 @@
 		   BasedOn="{StaticResource XamlDefaultFrame}" />
 
 	<!-- Default style for Windows.UI.Xaml.Controls.ProgressBar -->
-	<Style x:Key="XamlDefaultProgressBar"
-				   TargetType="ProgressBar">
+	<uwpOnly:Style x:Key="XamlDefaultProgressBar"
+				   TargetType="uwpOnly:ProgressBar">
 		<Setter Property="Foreground"
 				Value="{ThemeResource SystemControlHighlightAccentBrush}" />
 		<Setter Property="Background"
@@ -4620,9 +4636,9 @@
 				</ControlTemplate>
 			</Setter.Value>
 		</Setter>
-	</Style>
+	</uwpOnly:Style>
 
-	<Style TargetType="ProgressBar"
+	<uwpOnly:Style TargetType="uwpOnly:ProgressBar"
 		   BasedOn="{StaticResource XamlDefaultProgressBar}" />
 
 
@@ -5307,7 +5323,7 @@
 		</Setter>
 		<Setter Property="Template">
 			<Setter.Value>
-				<ControlTemplate TargetType="local:Pivot">
+				<ControlTemplate TargetType="Pivot">
 					<Grid x:Name="RootElement"
 						  HorizontalAlignment="{TemplateBinding HorizontalAlignment}"
 						  VerticalAlignment="{TemplateBinding VerticalAlignment}"
@@ -5564,7 +5580,7 @@
 				Value="False" />
 		<Setter Property="Template">
 			<Setter.Value>
-				<ControlTemplate TargetType="local:PivotItem">
+				<ControlTemplate TargetType="PivotItem">
 					<Grid Background="{TemplateBinding Background}"
 						  HorizontalAlignment="{TemplateBinding HorizontalAlignment}"
 						  VerticalAlignment="{TemplateBinding VerticalAlignment}">
@@ -5591,7 +5607,7 @@
 	</Style>
 
 	<!-- Default style for Windows.UI.Xaml.Controls.Primitives.PivotHeaderItem -->
-	<Style TargetType="local:PivotHeaderItem">
+	<Style TargetType="PivotHeaderItem">
 		<Setter Property="FontSize"
 				Value="{ThemeResource PivotHeaderItemFontSize}" />
 		<Setter Property="FontFamily"
@@ -5616,7 +5632,7 @@
 				Value="False" />
 		<Setter Property="Template">
 			<Setter.Value>
-				<ControlTemplate TargetType="local:PivotHeaderItem">
+				<ControlTemplate TargetType="PivotHeaderItem">
 					<Grid x:Name="Grid"
 						  Background="{TemplateBinding Background}"
 						  Padding="{TemplateBinding Padding}">
@@ -6029,6 +6045,7 @@
 						<Grid.RowDefinitions>
 							<RowDefinition Height="Auto" />
 							<RowDefinition Height="*" />
+							<RowDefinition Height="Auto" />
 						</Grid.RowDefinitions>
 						<Border x:Name="BorderElement"
 							Grid.Row="1"
@@ -6093,7 +6110,13 @@
 							Width="{TemplateBinding Height}"
 							VerticalAlignment="Stretch"
 							AutomationProperties.AccessibilityView="Raw"/>
-
+                        <ContentPresenter x:Name="DescriptionPresenter"
+                            Grid.Row="2"
+                            Grid.ColumnSpan="3"
+                            Content="{TemplateBinding Description}"
+                            x:Load="False"
+                            Foreground="{ThemeResource SystemControlDescriptionTextForegroundBrush}"
+                            AutomationProperties.AccessibilityView="Raw" />
 					</Grid>
 				</ControlTemplate>
 			</Setter.Value>
@@ -6123,6 +6146,7 @@
 							PlaceholderText="{TemplateBinding PlaceholderText}"
 							Header="{TemplateBinding Header}"
 							Width="{TemplateBinding Width}"
+                            Description="{TemplateBinding Description}"
 							ScrollViewer.BringIntoViewOnFocusChange="False"
 							Canvas.ZIndex="0"
 							Margin="0"

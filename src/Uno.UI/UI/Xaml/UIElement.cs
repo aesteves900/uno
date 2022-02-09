@@ -31,6 +31,7 @@ using Windows.UI.Xaml.Automation.Peers;
 using Uno.UI.Xaml.Core;
 using Uno.UI.Xaml.Input;
 using System.Runtime.CompilerServices;
+using Windows.Graphics.Display;
 
 #if __IOS__
 using UIKit;
@@ -75,12 +76,17 @@ namespace Windows.UI.Xaml
 
 		private void Initialize()
 		{
-			this.RegisterDefaultValueProvider(OnGetDefaultValue);
 		}
 
 		private protected virtual bool IsTabStopDefaultValue => false;
 
-		private bool OnGetDefaultValue(DependencyProperty property, out object defaultValue)
+		/// <summary>
+		/// Provide an instance-specific default value for the specified property
+		/// </summary>
+		/// <remarks>
+		/// In general, it is best do define the property default value using <see cref="PropertyMetadata"/>.
+		/// </remarks>
+		internal virtual bool GetDefaultValue2(DependencyProperty property, out object defaultValue)
 		{
 			if (property == KeyboardAcceleratorsProperty)
 			{
@@ -100,6 +106,8 @@ namespace Windows.UI.Xaml
 		public Vector2 ActualSize => new Vector2((float)GetActualWidth(), (float)GetActualHeight());
 
 		internal Size AssignedActualSize { get; set; }
+
+		internal bool IsLeavingFrame { get; set; }
 
 		private protected virtual double GetActualWidth() => AssignedActualSize.Width;
 
@@ -541,7 +549,7 @@ namespace Windows.UI.Xaml
 #else
 			for (var i = 0; i < MaxLayoutIterations; i++)
 			{
-				if (root.IsMeasureDirty)
+				if (root.IsMeasureOrMeasureDirtyPath)
 				{
 					root.Measure(bounds.Size);
 				}
@@ -644,11 +652,6 @@ namespace Windows.UI.Xaml
 			{
 				return "**** Invalid property and value format.";
 			}
-		}
-
-		// This is part of the WinUI internal contract and is being invoked on each DP change
-		internal virtual void OnPropertyChanged2(DependencyPropertyChangedEventArgs args)
-		{
 		}
 
 		/// <summary>
@@ -875,7 +878,7 @@ namespace Windows.UI.Xaml
 		internal double GetScaleFactorForLayoutRounding()
 		{
 			// TODO use actual scaling based on current transforms.
-			return global::Windows.Graphics.Display.DisplayInformation.GetForCurrentView().LogicalDpi / 96.0f; // 100%
+			return global::Windows.Graphics.Display.DisplayInformation.GetForCurrentView().LogicalDpi / DisplayInformation.BaseDpi; // 100%
 		}
 
 		double XcpRound(double x)

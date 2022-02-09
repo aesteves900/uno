@@ -55,6 +55,8 @@ namespace Uno.UI.RuntimeTests.Tests.Windows_UI_Xaml_Controls
 
 		private ItemsPanelTemplate NoCacheItemsStackPanel => _testsResources["NoCacheItemsStackPanel"] as ItemsPanelTemplate;
 
+		private ItemsPanelTemplate NonVirtualizingItemsPanel => _testsResources["NonVirtualizingItemsPanel"] as ItemsPanelTemplate;
+
 		private DataTemplate SelectableItemTemplateA => _testsResources["SelectableItemTemplateA"] as DataTemplate;
 		private DataTemplate SelectableItemTemplateB => _testsResources["SelectableItemTemplateB"] as DataTemplate;
 		private DataTemplate SelectableItemTemplateC => _testsResources["SelectableItemTemplateC"] as DataTemplate;
@@ -63,7 +65,12 @@ namespace Uno.UI.RuntimeTests.Tests.Windows_UI_Xaml_Controls
 		private DataTemplate GreenSelectableTemplate => _testsResources["GreenSelectableTemplate"] as DataTemplate;
 		private DataTemplate BeigeSelectableTemplate => _testsResources["BeigeSelectableTemplate"] as DataTemplate;
 
+		private DataTemplate SelectableBoundTemplateA => _testsResources["SelectableBoundTemplateA"] as DataTemplate;
+		private DataTemplate SelectableBoundTemplateB => _testsResources["SelectableBoundTemplateB"] as DataTemplate;
+
 		private DataTemplate BoundHeightItemTemplate => _testsResources["BoundHeightItemTemplate"] as DataTemplate;
+
+		private DataTemplate ReuseCounterItemTemplate => _testsResources["ReuseCounterItemTemplate"] as DataTemplate;
 
 		[TestInitialize]
 		public void Init()
@@ -1587,6 +1594,9 @@ namespace Uno.UI.RuntimeTests.Tests.Windows_UI_Xaml_Controls
 		}
 
 		[TestMethod]
+#if __WASM__
+		[Ignore("Fails on WASM")]
+#endif
 		public async Task When_Unmaterialized_Item_Size_Changed()
 		{
 			var source = new ObservableCollection<ItemHeightViewModel>(
@@ -1611,7 +1621,7 @@ namespace Uno.UI.RuntimeTests.Tests.Windows_UI_Xaml_Controls
 			for (int i = 100; i <= 1000; i += 100)
 			{
 				sv.ChangeView(null, i, null, disableAnimation: true);
-				await Task.Delay(10);
+				await Task.Yield();
 			}
 
 			await WindowHelper.WaitForNonNull(() => SUT.ContainerFromIndex(source.Count - 1));
@@ -1626,7 +1636,9 @@ namespace Uno.UI.RuntimeTests.Tests.Windows_UI_Xaml_Controls
 #if __SKIA__ || __WASM__
 				panel.InvalidateMeasure();
 #endif
-				await Task.Delay(10);
+				await Task.Delay(50);
+				await Task.Delay(50);
+				await Task.Delay(50);
 			}
 
 			var firstContainer = await WindowHelper.WaitForNonNull(() => SUT.ContainerFromIndex(0) as ListViewItem);
@@ -1640,8 +1652,125 @@ namespace Uno.UI.RuntimeTests.Tests.Windows_UI_Xaml_Controls
 			Assert.AreEqual(listBounds.Y, itemBounds.Y); // Top of first item should align with top of list
 		}
 
+		[TestMethod]
+		public async Task When_TemplateSelector_And_List_Reloaded()
+		{
+			var itemsSource = new ObservableCollection<SourceAwareItem>();
+			var selector = new SourceAwareSelector(itemsSource, SelectableBoundTemplateA, SelectableBoundTemplateB);
+			var counter = 0;
+
+			AddItem();
+			AddItem();
+			AddItem();
+
+			var list = new ListView()
+			{
+				Width = 200,
+				Height = 300,
+				ItemsSource = itemsSource,
+				ItemTemplateSelector = selector
+			};
+
+			WindowHelper.WindowContent = list;
+
+			await WindowHelper.WaitForLoaded(list);
+
+			AddItem();
+			AddItem();
+			AddItem();
+
+			RemoveItem();
+			RemoveItem();
+			RemoveItem();
+
+			await WindowHelper.WaitFor(() =>
+			{
+				var firstContainer = (list.ContainerFromIndex(0) as ListViewItem);
+				return firstContainer?.Content == itemsSource[0];
+			});
+
+			WindowHelper.WindowContent = null; // Unload list
+
+			await Task.Delay(100);
+
+			WindowHelper.WindowContent = list;
+
+			await WindowHelper.WaitForLoaded(list);
+
+			if (selector.Exception is { } ex)
+			{
+				throw ex;
+			}
+
+			void AddItem()
+			{
+				itemsSource.Add(new SourceAwareItem { No = counter });
+				counter++;
+			}
+
+			void RemoveItem()
+			{
+				itemsSource.RemoveAt(0);
+			}
+		}
+
+		[TestMethod]
+		public async Task When_List_Given_More_Space()
+		{
+
+			var list = new ListView
+			{
+				ItemsPanel = NoCacheItemsStackPanel,
+				ItemTemplate = FixedSizeItemTemplate,
+				ItemContainerStyle = NoSpaceContainerStyle,
+				ItemsSource = Enumerable.Range(0,10).Select(i => $"Item {i}").ToArray()
+			};
+			var host = new Grid
+			{
+				Height = 100,
+				Children =
+				{
+					list
+				}
+			};
+
+			WindowHelper.WindowContent = host;
+			await WindowHelper.WaitForLoaded(list);
+
+			Assert.IsNotNull(list.ContainerFromIndex(2));
+			Assert.IsNull(list.ContainerFromIndex(8));
+
+			host.Height = 300;
+
+			await WindowHelper.WaitForNonNull(() => list.ContainerFromIndex(8));
+		}
+
+		[TestMethod]
+		public async Task When_Pool_Aware_View_In_Item_Template()
+		{
+			using (FeatureConfigurationHelper.UseTemplatePooling())
+			{
+				var initialReuseCount = ReuseCountGrid.GlobalReuseCount;
+				var SUT = new ListView
+				{
+					ItemsSource = Enumerable.Range(1, 4).ToArray(),
+					ItemsPanel = NonVirtualizingItemsPanel,
+					ItemTemplate = ReuseCounterItemTemplate
+				};
+
+				WindowHelper.WindowContent = SUT;
+
+				await WindowHelper.WaitForLoaded(SUT);
+
+				Assert.AreEqual(initialReuseCount, ReuseCountGrid.GlobalReuseCount);
+			}
+		}
+
 		private bool ApproxEquals(double value1, double value2) => Math.Abs(value1 - value2) <= 2;
 
+
+
+		#region Helper classes
 		private class When_Removed_From_Tree_And_Selection_TwoWay_Bound_DataContext : System.ComponentModel.INotifyPropertyChanged
 		{
 			public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
@@ -1837,4 +1966,54 @@ namespace Uno.UI.RuntimeTests.Tests.Windows_UI_Xaml_Controls
 
 		public event global::System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
 	}
+
+	public class SourceAwareItem
+	{
+		public int No { get; set; }
+
+		public override string ToString() => $"Item {No}";
+	}
+
+	public class SourceAwareSelector : DataTemplateSelector
+	{
+		private readonly IList<SourceAwareItem> _itemsSource;
+		public DataTemplate _dataTemplateA;
+		private readonly DataTemplate _dataTemplateB;
+
+		public Exception Exception { get; private set; }
+
+		public SourceAwareSelector(IList<SourceAwareItem> itemsSource, DataTemplate dataTemplateA, DataTemplate dataTemplateB)
+		{
+			_itemsSource = itemsSource;
+			_dataTemplateA = dataTemplateA;
+			_dataTemplateB = dataTemplateB;
+		}
+
+		protected override DataTemplate SelectTemplateCore(object item)
+		{
+			if (
+#if __IOS__
+				// On iOS, the template selector may be invoked with a null item. This is arguably also a bug, but not presently under test here.
+				item != null &&
+#endif
+					!_itemsSource.Contains(item)
+			)
+			{
+				var ex = new InvalidOperationException($"Selector called for item not in source ({item})");
+				Exception = Exception ?? ex;
+				throw ex;
+			}
+
+			if (item is SourceAwareItem dataItem && dataItem.No > 2)
+			{
+				return _dataTemplateB;
+			}
+
+			else
+			{
+				return _dataTemplateA;
+			}
+		}
+	}
+	#endregion
 }

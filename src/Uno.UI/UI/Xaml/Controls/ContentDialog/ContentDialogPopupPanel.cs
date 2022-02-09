@@ -21,6 +21,12 @@ namespace Windows.UI.Xaml.Controls
 		{
 		}
 
+		protected override Size MeasureOverride(Size availableSize)
+		{
+			var actualAvailableSize = CalculateDialogAvailableSize(availableSize);
+			return base.MeasureOverride(actualAvailableSize);
+		}
+
 		protected override Size ArrangeOverride(Size finalSize)
 		{
 			if (this.Log().IsEnabled(Uno.Foundation.Logging.LogLevel.Debug))
@@ -49,6 +55,22 @@ namespace Windows.UI.Xaml.Controls
 			return finalSize;
 		}
 
+		private Size CalculateDialogAvailableSize(Size availableSize)
+		{
+			var visibleBounds = ApplicationView.GetForCurrentView().TrueVisibleBounds;
+
+			if (availableSize.Width > visibleBounds.Width)
+			{
+				availableSize.Width = visibleBounds.Width;
+			}
+			if (availableSize.Height > visibleBounds.Height)
+			{
+				availableSize.Height = visibleBounds.Height;
+			}
+
+			return availableSize;
+		}
+
 		private Rect CalculateDialogPlacement(Size desiredSize)
 		{
 			var visibleBounds = ApplicationView.GetForCurrentView().TrueVisibleBounds;
@@ -63,7 +85,7 @@ namespace Windows.UI.Xaml.Controls
 				desiredSize.Height = visibleBounds.Height;
 			}
 
-			var  finalPosition = new Point(
+			var finalPosition = new Point(
 						x: (visibleBounds.Width - desiredSize.Width) / 2.0,
 						y: (visibleBounds.Height - desiredSize.Height) / 2.0);
 
@@ -71,5 +93,9 @@ namespace Windows.UI.Xaml.Controls
 
 			return finalRect;
 		}
+
+		// The ContentDialog backdrop (aka 'smoke layer') doesn't light-dismiss, but does block pointer interactions. On WinUI this is implemented by adding
+		// a second Popup containing a stretched Rectangle. To keep things simple, we just block pointers from passing from here.
+		internal override bool IsViewHit() => true;
 	}
 }

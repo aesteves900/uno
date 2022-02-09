@@ -34,6 +34,8 @@ namespace Windows.UI.Xaml.Controls
 		{
 			InitializePartial();
 			RegisterAsScrollPort(this);
+
+			InitializeScrollContentPresenter();
 		}
 		partial void InitializePartial();
 
@@ -69,7 +71,7 @@ namespace Windows.UI.Xaml.Controls
 
 		private void InitializeScrollContentPresenter()
 		{
-			this.RegisterParentChangedCallback(this, OnParentChanged);
+			this.RegisterParentChangedCallbackStrong(this, OnParentChanged);
 		}
 
 		private void OnParentChanged(object instance, object key, DependencyObjectParentChangedEventArgs args)
@@ -158,16 +160,6 @@ namespace Windows.UI.Xaml.Controls
 			{
 				var slotSize = size;
 
-#if __WASM__
-				if (CanVerticallyScroll || _forceChangeToCurrentView)
-				{
-					slotSize.Height = double.PositiveInfinity;
-				}
-				if (CanHorizontallyScroll || _forceChangeToCurrentView)
-				{
-					slotSize.Width = double.PositiveInfinity;
-				}
-#else
 				if (CanVerticallyScroll)
 				{
 					slotSize.Height = double.PositiveInfinity;
@@ -176,7 +168,6 @@ namespace Windows.UI.Xaml.Controls
 				{
 					slotSize.Width = double.PositiveInfinity;
 				}
-#endif
 
 				child.Measure(slotSize);
 

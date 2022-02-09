@@ -25,6 +25,8 @@ namespace Windows.UI.Xaml
 		/// </summary>
 		internal bool IsMeasureDirty => false;
 
+		internal bool IsMeasureOrMeasureDirtyPath => false;
+
 		/// <summary>
 		/// Determines if InvalidateArrange has been called
 		/// </summary>
@@ -39,6 +41,8 @@ namespace Windows.UI.Xaml
 		internal void MoveChildTo(int oldIndex, int newIndex) => throw new NotSupportedException("Reference assembly");
 
 		internal bool RemoveChild(UIElement child) => throw new NotSupportedException("Reference assembly");
+
+		internal UIElement ReplaceChild(int index, UIElement child) => throw new NotSupportedException("Reference assembly");
 
 		internal void ClearChildren() => throw new NotSupportedException("Reference assembly");
 

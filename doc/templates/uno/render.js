@@ -5,12 +5,16 @@ enableSearch();
 renderTables();
 renderAlerts();
 renderLinks();
-renderNavbar();
 renderSidebar();
 renderAffix();
-renderFooter();
-renderLogo();
 
+if (iframed) {
+    fixNavbarSpacing();
+} else {
+    renderNavbar();
+    renderLogo();
+}
+renderFooter();
 breakText();
 renderTabs();
 updateLogo();

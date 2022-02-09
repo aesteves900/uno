@@ -294,7 +294,7 @@ namespace Windows.UI.Xaml.Controls
 		{
 			get
 			{
-				var measured = PrepareLayout(false);
+				var measured = PrepareLayoutIfNeeded(false);
 				if (_lastElement != null && HasDynamicElementSizes)
 				{
 					if (ScrollOrientation == Orientation.Vertical)
@@ -339,7 +339,7 @@ namespace Windows.UI.Xaml.Controls
 				Owner.ReloadDataIfNeeded();
 			}
 
-			PrepareLayout(true);
+			PrepareLayoutIfNeeded(true);
 		}
 
 		public override void PrepareForCollectionViewUpdates(UICollectionViewUpdateItem[] updateItems)
@@ -410,7 +410,7 @@ namespace Windows.UI.Xaml.Controls
 		public CGSize SizeThatFits(CGSize size)
 		{
 			TrySetHasConsumedUnusedSpace();
-			return PrepareLayout(false, size);
+			return PrepareLayoutIfNeeded(false, size);
 		}
 
 		/// <summary>
@@ -421,7 +421,7 @@ namespace Windows.UI.Xaml.Controls
 		/// <returns>The total collection size</returns>
 		/// <remarks>This is called by overridden methods which need to know the total dimensions of the panel content. If a full relayout is required,
 		/// it calls <see cref="PrepareLayoutInternal(bool, bool, CGSize)"/>; otherwise it returns a cached value.</remarks>
-		private CGSize PrepareLayout(bool createLayoutInfo, CGSize? size = null)
+		private CGSize PrepareLayoutIfNeeded(bool createLayoutInfo, CGSize? size = null)
 		{
 			using (
 			   _trace.WriteEventActivity(
@@ -1488,12 +1488,17 @@ namespace Windows.UI.Xaml.Controls
 
 		internal Uno.UI.IndexPath? CompleteReorderingItem(FrameworkElement element, object item)
 		{
+			var dropTarget = _reorderingDropTarget?.ToIndexPath();
+			CleanupReordering();
+			return dropTarget;
+		}
+
+		internal void CleanupReordering()
+		{
 			_reorderingState = null;
 			ResetReorderedLayoutAttributes();
-			var dropTarget = _reorderingDropTarget?.ToIndexPath();
 			_reorderingDropTarget = null;
 			InvalidateLayout();
-			return dropTarget;
 		}
 
 		/// <summary>
@@ -1505,14 +1510,14 @@ namespace Windows.UI.Xaml.Controls
 
 			if (_reorderingState is { } reorderingState && reorderingState.LayoutAttributes is { } draggedAttributes)
 			{
-				var dropTargetAttributes = GetLayoutAttributesUnderPoint(reorderingState.Location);
+				var dropTargetAttributes = FindLayoutAttributesClosestOfPoint(reorderingState.Location);
 				if (dropTargetAttributes == draggedAttributes)
 				{
 					// The item being dragged is currently under the point, no need to shift any items
 					dropTargetAttributes = null;
 				}
 				_reorderingDropTarget = dropTargetAttributes?.IndexPath;
-				if (dropTargetAttributes != null)
+				if (dropTargetAttributes is not null)
 				{
 					var preDragDraggedFrame = draggedAttributes.Frame;
 
@@ -1578,20 +1583,33 @@ namespace Windows.UI.Xaml.Controls
 			_preReorderFrames.Clear();
 		}
 
-		private UICollectionViewLayoutAttributes GetLayoutAttributesUnderPoint(Point point)
+		private UICollectionViewLayoutAttributes FindLayoutAttributesClosestOfPoint(Point point)
 		{
+			var adjustedPoint = AdjustExtentOffset(point, GetExtent(Owner.ContentOffset));
+
+			var closestDistance = double.MaxValue;
+			var closestElement = default(UICollectionViewLayoutAttributes);
+
 			foreach (var dict in _itemLayoutInfos.Values)
 			{
 				foreach (var layoutAttributes in dict.Values)
 				{
-					if (DoesLayoutAttributesContainDraggedPoint(point, layoutAttributes))
+					var distance = ((Rect)layoutAttributes.Frame).GetDistance(adjustedPoint);
+					if (distance == 0)
 					{
+						// Fast path: we found the element that is under the element
 						return layoutAttributes;
+					}
+
+					if (distance < closestDistance)
+					{
+						closestDistance = distance;
+						closestElement = layoutAttributes;
 					}
 				}
 			}
 
-			return null;
+			return closestElement;
 		}
 
 		private bool DoesLayoutAttributesContainDraggedPoint(Point point, UICollectionViewLayoutAttributes layoutAttributes)

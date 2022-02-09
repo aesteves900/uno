@@ -77,6 +77,7 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 		private readonly Dictionary<string, string[]> _uiAutomationMappings;
 		private readonly string _defaultLanguage;
 		private readonly bool _isDebug;
+		private readonly bool _isDesignTimeBuild;
 		private readonly string _relativePath;
 		/// <summary>
 		/// True if the file currently being parsed contains a top-level ResourceDictionary definition.
@@ -117,7 +118,15 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 		// visual tree. See https://github.com/unoplatform/uno/issues/61
 		private readonly bool _skipUserControlsInVisualTree;
 
-		private readonly List<INamedTypeSymbol> _xamlAppliedTypes = new List<INamedTypeSymbol>();
+		/// <summary>
+		/// Holds information about multiple generator runs
+		/// </summary>
+		private readonly GenerationRunFileInfo _generationRunFileInfo;
+
+		/// <summary>
+		/// Information about types used in .Apply() scenarios
+		/// </summary>
+		private readonly Dictionary<INamedTypeSymbol, int> _xamlAppliedTypes = new Dictionary<INamedTypeSymbol, int>();
 
 		private readonly INamedTypeSymbol _elementStubSymbol;
 		private readonly INamedTypeSymbol _contentPresenterSymbol;
@@ -185,7 +194,7 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 		/// </summary>
 		private string SingletonClassName => $"ResourceDictionarySingleton__{_fileDefinition.ShortId}";
 
-		private bool IsHotReloadEnabled => _isDebug;
+		private readonly bool _isHotReloadEnabled;
 
 		private const string DictionaryProviderInterfaceName = "global::Uno.UI.IXamlResourceDictionaryProvider";
 
@@ -213,12 +222,15 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 			string defaultLanguage,
 			bool isWasm,
 			bool isDebug,
+			bool isHotReloadEnabled,
+			bool isDesignTimeBuild,
 			bool skipUserControlsInVisualTree,
 			bool shouldAnnotateGeneratedXaml,
 			bool isUnoAssembly,
 			bool isLazyVisualStateManagerEnabled,
 			GeneratorExecutionContext generatorContext,
-			bool xamlResourcesTrimming)
+			bool xamlResourcesTrimming,
+			GenerationRunFileInfo generationRunFileInfo)
 		{
 			_fileDefinition = file;
 			_targetPath = targetPath;
@@ -234,11 +246,14 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 			_uiAutomationMappings = uiAutomationMappings;
 			_defaultLanguage = defaultLanguage.HasValue() ? defaultLanguage : "en-US";
 			_isDebug = isDebug;
+			_isHotReloadEnabled = isHotReloadEnabled;
+			_isDesignTimeBuild = isDesignTimeBuild;
 			_skipUserControlsInVisualTree = skipUserControlsInVisualTree;
 			_shouldAnnotateGeneratedXaml = shouldAnnotateGeneratedXaml;
 			_isLazyVisualStateManagerEnabled = isLazyVisualStateManagerEnabled;
 			_generatorContext = generatorContext;
 			_xamlResourcesTrimming = xamlResourcesTrimming;
+			_generationRunFileInfo = generationRunFileInfo;
 
 			InitCaches();
 
@@ -319,6 +334,10 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 			{
 				return InnerGenerateFile();
 			}
+			catch (OperationCanceledException)
+			{
+				throw;
+			}
 			catch (Exception e)
 			{
 				throw new Exception($"Processing failed for file {_fileDefinition.FilePath} ({e})", e);
@@ -395,8 +414,35 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 			{
 				_isTopLevelDictionary = true;
 
-				BuildResourceDictionaryBackingClass(writer, topLevelControl);
-				BuildTopLevelResourceDictionary(writer, topLevelControl);
+				if (_generationRunFileInfo.RunInfo.Index == 0)
+				{
+					var componentBuilder = new IndentedStringBuilder();
+
+					using (componentBuilder.Indent(writer.CurrentLevel))
+					{
+						BuildResourceDictionaryBackingClass(componentBuilder, topLevelControl);
+						BuildTopLevelResourceDictionary(componentBuilder, topLevelControl);
+
+						_generationRunFileInfo.SetAppliedTypes(_xamlAppliedTypes);
+						_generationRunFileInfo.ComponentCode = componentBuilder.ToString();
+					}
+
+					writer.AppendLineInvariant("{0}", componentBuilder.ToString());
+				}
+				else
+				{
+					if (_generationRunFileInfo.RunInfo.Manager.PreviousRuns.FirstOrDefault(r => r.GetRunFileInfo(_fileUniqueId)?.ComponentCode != null) is { } runFileInfo)
+					{
+						var generationRunFileInfo = runFileInfo.GetRunFileInfo(_fileUniqueId);
+
+						writer.AppendLineInvariant("{0}", generationRunFileInfo.ComponentCode);
+
+						foreach (var type in generationRunFileInfo.AppliedTypes)
+						{
+							_xamlAppliedTypes.Add(type.Key, type.Value);
+						}
+					}
+				}
 			}
 			else
 			{
@@ -411,60 +457,48 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 
 					using (writer.BlockInvariant("partial class {0} : {1}", _className.className, controlBaseType.ToDisplayString()))
 					{
-						var isDirectUserControlChild = _skipUserControlsInVisualTree && IsUserControl(topLevelControl.Type, checkInheritance: false);
-
 						using (Scope(_className.ns, _className.className))
 						{
-							using (writer.BlockInvariant(BuildControlInitializerDeclaration(topLevelControl)))
+							if (_generationRunFileInfo.RunInfo.Index == 0)
 							{
-								if (IsApplication(topLevelControl.Type))
+								var componentBuilder = new IndentedStringBuilder();
+
+								using (componentBuilder.Indent(writer.CurrentLevel))
 								{
-									BuildApplicationInitializerBody(writer, topLevelControl);
-								}
-								else
-								{
-									BuildGenericControlInitializerBody(writer, topLevelControl, isDirectUserControlChild);
-									BuildNamedResources(writer, _namedResources);
+									BuildInitializeComponent(componentBuilder, topLevelControl, controlBaseType, false);
+
+									TryBuildElementStubHolders(componentBuilder);
+
+									BuildPartials(componentBuilder, isStatic: false);
+
+									BuildBackingFields(componentBuilder);
+
+									BuildChildSubclasses(componentBuilder);
+
+									BuildComponentFields(componentBuilder);
+
+									BuildCompiledBindings(componentBuilder, _className.className);
+
+									_generationRunFileInfo.SetAppliedTypes(_xamlAppliedTypes);
+									_generationRunFileInfo.ComponentCode = componentBuilder.ToString();
 								}
 
-								BuildCompiledBindingsInitializer(writer, _className.className, controlBaseType);
-
-								if (isDirectUserControlChild)
-								{
-									writer.AppendLineInvariant("return content;");
-								}
+								writer.AppendLineInvariant("{0}", componentBuilder.ToString());
 							}
-
-							if (isDirectUserControlChild)
+							else
 							{
-								using (writer.BlockInvariant("public {0}(bool skipsInitializeComponents)", _className.className))
+								if (_generationRunFileInfo.RunInfo.Manager.PreviousRuns.FirstOrDefault(r => r.GetRunFileInfo(_fileUniqueId)?.ComponentCode != null) is { } runFileInfo)
 								{
-								}
+									var generationRunFileInfo = runFileInfo.GetRunFileInfo(_fileUniqueId);
 
-								using (writer.BlockInvariant("private void InitializeComponent()"))
-								{
-									writer.AppendLineInvariant("Content = (_View)GetContent();");
+									writer.AppendLineInvariant("{0}", generationRunFileInfo.ComponentCode);
 
-									BuildCompiledBindingsInitializer(writer, _className.className, controlBaseType);
-
-									if (_isDebug)
+									foreach (var type in generationRunFileInfo.AppliedTypes)
 									{
-										writer.AppendLineInvariant($"global::Uno.UI.FrameworkElementHelper.SetBaseUri(this, \"file:///{_fileDefinition.FilePath.Replace("\\", "/")}\");");
+										_xamlAppliedTypes.Add(type.Key, type.Value);
 									}
 								}
 							}
-
-							TryBuildElementStubHolders(writer);
-
-							BuildPartials(writer, isStatic: false);
-
-							BuildBackingFields(writer);
-
-							BuildChildSubclasses(writer);
-
-							BuildComponentFields(writer);
-
-							BuildCompiledBindings(writer, _className.className);
 						}
 					}
 				}
@@ -476,6 +510,41 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 			return writer.ToString();
 		}
 
+		private void BuildInitializeComponent(IndentedStringBuilder writer, XamlObjectDefinition topLevelControl, INamedTypeSymbol controlBaseType, bool isDirectUserControlChild)
+		{
+			using (writer.BlockInvariant($"private void InitializeComponent()"))
+			{
+				if (IsApplication(topLevelControl.Type))
+				{
+					BuildApplicationInitializerBody(writer, topLevelControl);
+				}
+				else
+				{
+					if (_isDebug)
+					{
+						// Insert hot reload support
+						writer.AppendLineInvariant($"var __resourceLocator = new global::System.Uri(\"file:///{_fileDefinition.FilePath.Replace("\\", "/")}\");");
+
+						using (writer.BlockInvariant($"if(global::Uno.UI.ApplicationHelper.IsLoadableComponent(__resourceLocator))"))
+						{
+							writer.AppendLineInvariant($"global::Windows.UI.Xaml.Application.LoadComponent(this, __resourceLocator);");
+							writer.AppendLineInvariant($"return;");
+						}
+					}
+
+					BuildGenericControlInitializerBody(writer, topLevelControl, isDirectUserControlChild);
+					BuildNamedResources(writer, _namedResources);
+				}
+
+				BuildCompiledBindingsInitializer(writer, _className.className, controlBaseType);
+
+				if (isDirectUserControlChild)
+				{
+					writer.AppendLineInvariant("return content;");
+				}
+			}
+		}
+
 		private void BuildXamlApplyBlocks(IndentedStringBuilder writer)
 		{
 			TryAnnotateWithGeneratorSource(writer);
@@ -483,13 +552,13 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 			{
 				using (writer.BlockInvariant("static class {0}XamlApplyExtensions", _fileUniqueId))
 				{
-					foreach (var typeInfo in _xamlAppliedTypes.Select((type, i) => new { type, Index = i }))
+					foreach (var typeInfo in _xamlAppliedTypes)
 					{
-						writer.AppendLineInvariant($"public delegate void XamlApplyHandler{typeInfo.Index}({GetGlobalizedTypeName(typeInfo.type.ToString())} instance);");
+						writer.AppendLineInvariant($"public delegate void XamlApplyHandler{typeInfo.Value}({GetGlobalizedTypeName(typeInfo.Key.ToString())} instance);");
 
 						writer.AppendLineInvariant($"[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]");
 						using (writer.BlockInvariant(
-							$"public static {GetGlobalizedTypeName(typeInfo.type.ToString())} {_fileUniqueId}_XamlApply(this {GetGlobalizedTypeName(typeInfo.type.ToString())} instance, XamlApplyHandler{typeInfo.Index} handler)"
+							$"public static {GetGlobalizedTypeName(typeInfo.Key.ToString())} {_fileUniqueId}_XamlApply(this {GetGlobalizedTypeName(typeInfo.Key.ToString())} instance, XamlApplyHandler{typeInfo.Value} handler)"
 						))
 						{
 							writer.AppendLineInvariant($"handler(instance);");
@@ -515,7 +584,11 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 			writer.AppendLine();
 			writer.AppendLineInvariant($"global::{_defaultNamespace}.GlobalStaticResources.Initialize();");
 			writer.AppendLineInvariant($"global::{_defaultNamespace}.GlobalStaticResources.RegisterResourceDictionariesBySourceLocal();");
-			writer.AppendLineInvariant($"global::Uno.UI.DataBinding.BindableMetadata.Provider = new global::{_defaultNamespace}.BindableMetadataProvider();");
+
+			if (!_isDesignTimeBuild)
+			{
+				writer.AppendLineInvariant($"global::Uno.UI.DataBinding.BindableMetadata.Provider = new global::{_defaultNamespace}.BindableMetadataProvider();");
+			}
 
 			writer.AppendLineInvariant($"#if __ANDROID__");
 			writer.AppendLineInvariant($"global::Uno.Helpers.DrawableHelper.Drawables = typeof(global::{_defaultNamespace}.Resource.Drawable);");
@@ -601,12 +674,30 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 
 			foreach (var reference in _metadataHelper.Compilation.ExternalReferences)
 			{
-				if (!File.Exists(reference.Display))
+				string? GetFilePath()
+				{
+					if (reference is PortableExecutableReference per && File.Exists(per.FilePath))
+					{
+						return per.FilePath;
+					}
+					else if (File.Exists(reference.Display))
+					{
+						return reference.Display;
+					}
+					else
+					{
+						return null;
+					}
+				}
+
+				var referenceFilePath = GetFilePath();
+
+				if (referenceFilePath == null)
 				{
 					throw new InvalidOperationException($"The reference {reference.Display} could not be found in {reference.Display}");
 				}
 
-				using var stream = File.OpenRead(reference.Display!);
+				using var stream = File.OpenRead(referenceFilePath);
 				var asm = Mono.Cecil.AssemblyDefinition.ReadAssembly(stream);
 
 				if (asm.MainModule.HasResources && asm.MainModule.Resources.Any(r => r.Name.EndsWith("upri")))
@@ -1164,7 +1255,7 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 			{
 				var key = GetDictionaryResourceKey(resource);
 
-				if (key == null)
+				if (key == null || IsNativeStyle(resource))
 				{
 					continue;
 				}
@@ -1188,7 +1279,7 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 			{
 				var key = GetDictionaryResourceKey(resource);
 
-				if (key == null)
+				if (key == null || IsNativeStyle(resource))
 				{
 					continue;
 				}
@@ -1315,7 +1406,7 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 					var implicitKey = GetImplicitDictionaryResourceKey(style);
 					if (SymbolEqualityComparer.Default.Equals(targetType.ContainingAssembly, _metadataHelper.Compilation.Assembly))
 					{
-						var isNativeStyle = style.Members.FirstOrDefault(m => m.Member.Name == "IsNativeStyle")?.Value as string == "True";
+						var isNativeStyle = IsNativeStyle(style);
 
 						using (TrySingleLineIfForLinkerHint(writer, style))
 						{
@@ -1335,6 +1426,13 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 
 			return true;
 		}
+
+		/// <summary>
+		/// Determines if the provided object is setting the "IsNativeStyle" property, used in
+		/// conjuction with "FeatureConfiguration.Style.UseUWPDefaultStyles"
+		/// </summary>
+		private bool IsNativeStyle(XamlObjectDefinition style)
+			=> string.Equals(style.Members.FirstOrDefault(m => m.Member.Name == "IsNativeStyle")?.Value as string, "True", StringComparison.OrdinalIgnoreCase);
 
 		/// <summary>
 		/// Initialize a new ResourceDictionary instance and populate its items and properties.
@@ -1675,10 +1773,10 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 						propertyType
 					);
 					var isThemeResource = valueObject?.Type.Name == "ThemeResource";
-					var isStaticResourceForHotReload = IsHotReloadEnabled && valueObject?.Type.Name == "StaticResource";
+					var isStaticResourceForHotReload = _isHotReloadEnabled && valueObject?.Type.Name == "StaticResource";
 					if (valueObject != null && (isThemeResource || isStaticResourceForHotReload))
 					{
-						writer.AppendLineInvariant(".ApplyThemeResourceUpdateValues(\"{0}\", {1}, {2}, {3})", valueObject.Members.FirstOrDefault()?.Value, ParseContextPropertyAccess, isThemeResource ? "true" : "false", IsHotReloadEnabled ? "true" : "false");
+						writer.AppendLineInvariant(".ApplyThemeResourceUpdateValues(\"{0}\", {1}, {2}, {3})", valueObject.Members.FirstOrDefault()?.Value, ParseContextPropertyAccess, isThemeResource ? "true" : "false", _isHotReloadEnabled ? "true" : "false");
 					}
 
 					writer.AppendLineInvariant(lineEnding);
@@ -1741,10 +1839,10 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 					}
 
 					var isThemeResource = valueObject?.Type.Name == "ThemeResource";
-					var isStaticResourceForHotReload = IsHotReloadEnabled && valueObject?.Type.Name == "StaticResource";
+					var isStaticResourceForHotReload = _isHotReloadEnabled && valueObject?.Type.Name == "StaticResource";
 					if (valueObject != null && (isThemeResource || isStaticResourceForHotReload))
 					{
-						writer.AppendLineInvariant(".ApplyThemeResourceUpdateValues(\"{0}\", {1}, {2}, {3})", valueObject.Members.FirstOrDefault()?.Value, ParseContextPropertyAccess, isThemeResource ? "true" : "false", IsHotReloadEnabled ? "true" : "false");
+						writer.AppendLineInvariant(".ApplyThemeResourceUpdateValues(\"{0}\", {1}, {2}, {3})", valueObject.Members.FirstOrDefault()?.Value, ParseContextPropertyAccess, isThemeResource ? "true" : "false", _isHotReloadEnabled ? "true" : "false");
 					}
 
 					writer.AppendLineInvariant(lineEnding);
@@ -2353,6 +2451,10 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 				}
 
 				return false;
+			}
+			catch (OperationCanceledException)
+			{
+				throw;
 			}
 			catch (Exception e)
 			{
@@ -3672,15 +3774,13 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 
 			if (appliedType != null)
 			{
-				int typeIndex = _xamlAppliedTypes.IndexOf(appliedType);
-
-				if (typeIndex == -1)
+				if (!_xamlAppliedTypes.TryGetValue(appliedType, out var appliedTypeIndex))
 				{
-					_xamlAppliedTypes.Add(appliedType);
-					typeIndex = _xamlAppliedTypes.Count - 1;
+					appliedTypeIndex = _xamlAppliedTypes.Count;
+					_xamlAppliedTypes.Add(appliedType, _xamlAppliedTypes.Count);
 				}
 
-				delegateType = $"{_fileUniqueId}XamlApplyExtensions.XamlApplyHandler{typeIndex}";
+				delegateType = $"{_fileUniqueId}XamlApplyExtensions.XamlApplyHandler{appliedTypeIndex}";
 			}
 
 			return new XamlLazyApplyBlockIIndentedStringBuilder(writer, closureName, appliedType != null ? _fileUniqueId : null, delegateType);
@@ -3786,7 +3886,7 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 					if (IsDependencyProperty(member.Member))
 					{
 						var propertyOwner = GetType(member.Member.DeclaringType);
-						writer.AppendLineInvariant("global::Uno.UI.ResourceResolverSingleton.Instance.ApplyResource({0}, {1}.{2}Property, \"{3}\", isThemeResourceExtension: {4}, isHotReloadSupported: {5}, context: {6});", closureName, GetGlobalizedTypeName(propertyOwner.ToDisplayString()), member.Member.Name, resourceKey, isThemeResourceExtension ? "true" : "false", IsHotReloadEnabled ? "true" : "false", ParseContextPropertyAccess);
+						writer.AppendLineInvariant("global::Uno.UI.ResourceResolverSingleton.Instance.ApplyResource({0}, {1}.{2}Property, \"{3}\", isThemeResourceExtension: {4}, isHotReloadSupported: {5}, context: {6});", closureName, GetGlobalizedTypeName(propertyOwner.ToDisplayString()), member.Member.Name, resourceKey, isThemeResourceExtension ? "true" : "false", _isHotReloadEnabled ? "true" : "false", ParseContextPropertyAccess);
 					}
 					else if (IsAttachedProperty(member))
 					{
@@ -4327,9 +4427,12 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 				switch (propertyType.SpecialType)
 				{
 					case SpecialType.System_Int32:
+						// UWP ignores everything starting from a space. So `5 6 7` is a valid int value and it's "5".
+						return IgnoreStartingFromFirstSpaceIgnoreLeading(GetMemberValue());
 					case SpecialType.System_Int64:
 					case SpecialType.System_Int16:
 					case SpecialType.System_Byte:
+						// UWP doesn't ignore spaces here.
 						return GetMemberValue();
 					case SpecialType.System_Single:
 					case SpecialType.System_Double:
@@ -5328,10 +5431,10 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 					// Set ThemeResource information, if any, on Setter
 					var valueObject = valueNode.Objects.FirstOrDefault();
 					var isThemeResource = valueObject?.Type.Name == "ThemeResource";
-					var isStaticResourceForHotReload = IsHotReloadEnabled && valueObject?.Type.Name == "StaticResource";
+					var isStaticResourceForHotReload = _isHotReloadEnabled && valueObject?.Type.Name == "StaticResource";
 					if (valueObject != null && (isThemeResource || isStaticResourceForHotReload))
 					{
-						writer.AppendLineInvariant(".ApplyThemeResourceUpdateValues(\"{0}\", {1}, {2}, {3})", valueObject.Members.FirstOrDefault()?.Value, ParseContextPropertyAccess, isThemeResource ? "true" : "false", IsHotReloadEnabled ? "true" : "false");
+						writer.AppendLineInvariant(".ApplyThemeResourceUpdateValues(\"{0}\", {1}, {2}, {3})", valueObject.Members.FirstOrDefault()?.Value, ParseContextPropertyAccess, isThemeResource ? "true" : "false", _isHotReloadEnabled ? "true" : "false");
 					}
 				}
 				else if (fullTypeName == XamlConstants.Types.ResourceDictionary)
@@ -5936,7 +6039,32 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 			// UWP's Xaml parsing ignores curly brackets at beginning and end of a double literal
 			memberValue = memberValue.Trim('{', '}');
 
+			if (isDouble)
+            {
+				// UWP does that for double but not for float.
+				memberValue = IgnoreStartingFromFirstSpaceIgnoreLeading(memberValue);
+			}
+
 			return "{0}{1}".InvariantCultureFormat(memberValue, isDouble ? "d" : "f");
+		}
+
+		private static string IgnoreStartingFromFirstSpaceIgnoreLeading(string value)
+		{
+			var span = value.AsSpan().TrimStart();
+
+			var firstWhitespace = -1;
+			for (int i = 0; i < span.Length; i++)
+			{
+				if (char.IsWhiteSpace(span[i]))
+				{
+					firstWhitespace = i;
+					break;
+				}
+			}
+
+			return firstWhitespace == -1
+				? value
+				: span.Slice(0, firstWhitespace).ToString();
 		}
 
 		private string ValidatePropertyType(INamedTypeSymbol propertyType, XamlMemberDefinition? owner)

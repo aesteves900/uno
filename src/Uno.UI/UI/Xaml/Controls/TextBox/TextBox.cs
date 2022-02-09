@@ -82,7 +82,7 @@ namespace Windows.UI.Xaml.Controls
 
 		public TextBox()
 		{
-			this.RegisterParentChangedCallback(this, OnParentChanged);
+			this.RegisterParentChangedCallbackStrong(this, OnParentChanged);
 
 			DefaultStyleKey = typeof(TextBox);
 			SizeChanged += OnSizeChanged;
@@ -113,7 +113,7 @@ namespace Windows.UI.Xaml.Controls
 			OnFocusStateChanged((FocusState)FocusStateProperty.GetMetadata(GetType()).DefaultValue, FocusState, initial: true);
 			OnVerticalContentAlignmentChanged(VerticalAlignment.Top, VerticalContentAlignment);
 			OnTextCharacterCasingChanged(CreateInitialValueChangerEventArgs(CharacterCasingProperty, CharacterCasingProperty.GetMetadata(GetType()).DefaultValue, CharacterCasing));
-			OnDescriptionChanged(CreateInitialValueChangerEventArgs(DescriptionProperty, DescriptionProperty.GetMetadata(GetType()).DefaultValue, Description));
+			UpdateDescriptionVisibility(true);
 			var buttonRef = _deleteButton?.GetTarget();
 
 			if (buttonRef != null)
@@ -313,44 +313,33 @@ namespace Windows.UI.Xaml.Controls
 #endif
 		object Description
 		{
-			get => (object)this.GetValue(DescriptionProperty);
-			set
-			{
-				this.SetValue(DescriptionProperty, value);
-			}
+			get => this.GetValue(DescriptionProperty);
+			set => this.SetValue(DescriptionProperty, value);
 		}
 
 		public static DependencyProperty DescriptionProperty { get; } =
 			DependencyProperty.Register(
-				"Description",
+				nameof(Description),
 				typeof(object),
 				typeof(TextBox),
 				new FrameworkPropertyMetadata(
 					defaultValue: null,
-					propertyChangedCallback: (s, e) => ((TextBox)s)?.OnDescriptionChanged(e)
+					propertyChangedCallback: (s, e) => ((TextBox)s)?.UpdateDescriptionVisibility(false)
 				)
 			);
 
-		private void OnDescriptionChanged(DependencyPropertyChangedEventArgs args)
+		private void UpdateDescriptionVisibility(bool initialization)
 		{
-			ContentPresenter descriptionPresenter = this.FindName("DescriptionPresenter") as ContentPresenter;
+			if (initialization && Description == null)
+			{
+				// Avoid loading DescriptionPresenter element in template if not needed.
+				return;
+			}
+
+			var descriptionPresenter = this.FindName("DescriptionPresenter") as ContentPresenter;
 			if (descriptionPresenter != null)
 			{
-				if (args.NewValue != null)
-				{
-					if (args.NewValue is string s && string.IsNullOrWhiteSpace(s))
-					{
-						descriptionPresenter.Visibility = Visibility.Collapsed;
-					}
-					else
-					{
-						descriptionPresenter.Visibility = Visibility.Visible;
-					}
-				}
-				else
-				{
-					descriptionPresenter.Visibility = Visibility.Collapsed;
-				}
+				descriptionPresenter.Visibility = Description != null ? Visibility.Visible : Visibility.Collapsed;
 			}
 		}
 		#endregion
@@ -705,11 +694,22 @@ namespace Windows.UI.Xaml.Controls
 
 		#endregion
 
+		private protected override void OnIsTabStopChanged(bool oldValue, bool newValue)
+		{
+			base.OnIsTabStopChanged(oldValue, newValue);
+			OnIsTabStopChangedPartial();
+		}
+
+		partial void OnIsTabStopChangedPartial();
+
 		internal override void UpdateFocusState(FocusState focusState)
 		{
 			var oldValue = FocusState;
 			base.UpdateFocusState(focusState);
-			OnFocusStateChanged(oldValue, focusState, initial: false);
+			if (oldValue != focusState)
+			{
+				OnFocusStateChanged(oldValue, focusState, initial: false);
+			}
 		}
 
 		private void OnFocusStateChanged(FocusState oldValue, FocusState newValue, bool initial)
@@ -791,6 +791,15 @@ namespace Windows.UI.Xaml.Controls
 
 			args.Handled = true;
 		}
+
+		protected override void OnTapped(TappedRoutedEventArgs e)
+		{
+			base.OnTapped(e);
+
+			OnTappedPartial();
+		}
+
+		partial void OnTappedPartial();
 
 		/// <inheritdoc />
 		protected override void OnKeyDown(KeyRoutedEventArgs args)
@@ -950,6 +959,24 @@ namespace Windows.UI.Xaml.Controls
 		partial void SelectAllPartial();
 
 		internal override bool CanHaveChildren() => true;
+
+		internal override void UpdateThemeBindings(Data.ResourceUpdateReason updateReason)
+		{
+			base.UpdateThemeBindings(updateReason);
+
+			UpdateKeyboardThemePartial();
+		}
+
+		partial void UpdateKeyboardThemePartial();
+
+		private protected override void OnIsEnabledChanged(IsEnabledChangedEventArgs e)
+		{
+			base.OnIsEnabledChanged(e);
+			UpdateVisualState();
+			OnIsEnabledChangedPartial(e);
+		}
+
+		partial void OnIsEnabledChangedPartial(IsEnabledChangedEventArgs e);
 
 		private bool ShouldFocusOnPointerPressed(PointerRoutedEventArgs args) =>
 			// For mouse and pen, the TextBox should focus on pointer press, for other input types on release

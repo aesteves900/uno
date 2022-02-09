@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
+using Windows.Devices.Input;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 using SamplesApp.UITests.Extensions;
@@ -18,12 +20,18 @@ namespace SamplesApp.UITests
 	{
 		protected IApp _app;
 		private static int _totalTestFixtureCount;
+		private static bool _firstRun = true;
+		private DateTime _startTime;
+		private readonly string _screenShotPath = Environment.GetEnvironmentVariable("UNO_UITEST_SCREENSHOT_PATH");
+
 
 		[OneTimeSetUp]
 		public void SingleSetup()
 		{
 			ValidateAppMode();
 		}
+
+		protected IApp App => _app;
 
 		static SampleControlUITestBase()
 		{
@@ -43,6 +51,19 @@ namespace SamplesApp.UITests
 			// and gain some time for the tests.
 			AppInitializer.ColdStartApp();
 		}
+
+		/// <summary>
+		/// Gets the default pointer type for the current platform
+		/// </summary>
+		public PointerDeviceType DefaultPointerType => AppInitializer.GetLocalPlatform() switch
+		{
+			Platform.Browser => PointerDeviceType.Mouse,
+			Platform.iOS => PointerDeviceType.Touch,
+			Platform.Android => PointerDeviceType.Touch,
+			_ => throw new InvalidOperationException($"Unknown platform '{AppInitializer.GetLocalPlatform()}'.")
+		};
+
+		public PointerDeviceType CurrentPointerType => DefaultPointerType; // We cannot change pointer type on this platform
 
 		public void ValidateAppMode()
 		{
@@ -67,6 +88,8 @@ namespace SamplesApp.UITests
 		[AutoRetry]
 		public void BeforeEachTest()
 		{
+			_startTime = DateTime.Now;
+
 			ValidateAutoRetry();
 
 			// Check if the test needs to be ignore or not
@@ -123,6 +146,26 @@ namespace SamplesApp.UITests
 			{
 				TakeScreenshot($"{TestContext.CurrentContext.Test.Name} - Tear down on error", ignoreInSnapshotCompare: true);
 			}
+
+			WriteSystemLogs(GetCurrentStepTitle("log"));
+		}
+
+		private void WriteSystemLogs(string fileName)
+		{
+			if (_app != null && AppInitializer.GetLocalPlatform() == Platform.Browser)
+			{
+				var outputPath = string.IsNullOrEmpty(_screenShotPath)
+					? Environment.CurrentDirectory
+					: _screenShotPath;
+
+				using (var logOutput = new StreamWriter(Path.Combine(outputPath, $"{fileName}_{DateTime.Now:yyyy-MM-dd-HH-mm-ss.fff}.txt")))
+				{
+					foreach (var log in _app.GetSystemLogs(_startTime.ToUniversalTime()))
+					{
+						logOutput.WriteLine($"{log.Timestamp}/{log.Level}: {log.Message}");
+					}
+				}
+			}
 		}
 
 		public ScreenshotInfo TakeScreenshot(string stepName, bool? ignoreInSnapshotCompare = null)
@@ -135,20 +178,13 @@ namespace SamplesApp.UITests
 
 		public ScreenshotInfo TakeScreenshot(string stepName, ScreenshotOptions options)
 		{
-			if(_app == null)
+			if (_app == null)
 			{
 				Console.WriteLine($"Skipping TakeScreenshot _app is not available");
 				return null;
 			}
 
-			var title = $"{TestContext.CurrentContext.Test.Name}_{stepName}"
-				.Replace(" ", "_")
-				.Replace(".", "_")
-				.Replace("(", "")
-				.Replace(")", "")
-				.Replace("\"", "")
-				.Replace(",", "_")
-				.Replace("__", "_");
+			var title = GetCurrentStepTitle(stepName);
 
 			var fileInfo = _app.Screenshot(title);
 
@@ -175,13 +211,23 @@ namespace SamplesApp.UITests
 				TestContext.AddTestAttachment(fileInfo.FullName, stepName);
 			}
 
-			if(options != null)
+			if (options != null)
 			{
 				SetOptions(fileInfo, options);
 			}
 
-			return new ScreenshotInfo(fileInfo, stepName) ;
+			return new ScreenshotInfo(fileInfo, stepName);
 		}
+
+		private static string GetCurrentStepTitle(string stepName) =>
+					$"{TestContext.CurrentContext.Test.Name}_{stepName}"
+						.Replace(" ", "_")
+						.Replace(".", "_")
+						.Replace("(", "")
+						.Replace(")", "")
+						.Replace("\"", "")
+						.Replace(",", "_")
+						.Replace("__", "_");
 
 		public void SetOptions(FileInfo screenshot, ScreenshotOptions options)
 		{
@@ -265,6 +311,9 @@ namespace SamplesApp.UITests
 			}
 		}
 
+		protected async Task RunAsync(string metadataName, bool waitForSampleControl = true, bool skipInitialScreenshot = false, int sampleLoadTimeout = 5)
+			=> Run(metadataName, waitForSampleControl, skipInitialScreenshot, sampleLoadTimeout);
+
 		protected void Run(string metadataName, bool waitForSampleControl = true, bool skipInitialScreenshot = false, int sampleLoadTimeout = 5)
 		{
 			if (waitForSampleControl)
@@ -274,6 +323,12 @@ namespace SamplesApp.UITests
 					: new QueryEx(q => q.All().Marked("sampleControl"));
 
 				_app.WaitForElement(sampleControlQuery, timeout: TimeSpan.FromSeconds(sampleLoadTimeout));
+
+				if (_firstRun)
+				{
+					_firstRun = false;
+					WriteSystemLogs("AppStartup");
+				}
 			}
 
 			var testRunId = _app.InvokeGeneric("browser:SampleRunner|RunTest", metadataName);

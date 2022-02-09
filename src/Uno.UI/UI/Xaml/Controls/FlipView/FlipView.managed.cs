@@ -344,7 +344,7 @@ namespace Windows.UI.Xaml.Controls
 		// Calculates the rectangle to be brought into view from the index.
 		private Rect CalculateBounds(int index)
 		{
-			Rect emptyRect = Rect.Empty;
+			Rect emptyRect = default;
 			bool isVertical = false;
 			Orientation physicalOrientation = Orientation.Vertical;
 			double width = 0;
@@ -474,6 +474,11 @@ namespace Windows.UI.Xaml.Controls
 						m_tpScrollViewer.VerticalScrollMode = ScrollMode.Disabled;
 						m_tpScrollViewer.HorizontalScrollMode = ScrollMode.Enabled;
 					}
+#if HAS_UNO && __WASM__
+					// UNO workaround: the scrollability depends on both the ScrollMode and the ScrollBarVisibility, and by default the latter is Disabled.
+					m_tpScrollViewer.HorizontalScrollBarVisibility = m_tpScrollViewer.HorizontalScrollMode == ScrollMode.Enabled ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Disabled;
+					m_tpScrollViewer.VerticalScrollBarVisibility = m_tpScrollViewer.VerticalScrollMode == ScrollMode.Enabled ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Disabled;
+#endif
 
 					m_tpScrollViewer.SizeChanged += OnScrollingHostPartSizeChanged;
 
@@ -750,13 +755,13 @@ namespace Windows.UI.Xaml.Controls
 
 		protected override void OnItemsChanged(object e)
 		{
-			base.OnItemsChanged(e);
-
 			int currentSelectedIndex = 0;
 			int previousSelectedIndex = 0;
 			bool savedSkipAnimationOnce = m_skipAnimationOnce;
 
 			previousSelectedIndex = SelectedIndex;
+
+			base.OnItemsChanged(e); // TODO: this currently will never modify SelectedIndex, because the base method doesn't do anything. As part of work to align selection handling better with WinUI, the logic to update SelectedIndex on collection changes should move to Selector.OnItemsChanged() (which currently doesn't exist).
 
 			currentSelectedIndex = SelectedIndex;
 			if (previousSelectedIndex < 0 ||
@@ -1516,6 +1521,9 @@ namespace Windows.UI.Xaml.Controls
 					m_tpScrollViewer?.UpdateLayout();
 
 					m_tpFixOffsetTimer?.Stop();
+
+					// UNO: force previous/next buttons' visibility to update immediately
+					UpdateVisualState();
 
 					//m_tpScrollViewer?.InvalidateScrollInfo();
 					// When the application is not being rendered, there is no need to animate

@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Uno.UI.Foldable")]
@@ -10,6 +11,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Uno.UI.RuntimeTests")]
 [assembly: InternalsVisibleTo("Uno.UI.RuntimeTests.Wasm")]
 [assembly: InternalsVisibleTo("Uno.UI.RuntimeTests.Skia")]
+[assembly: InternalsVisibleTo("Uno.UI.Lottie")]
 [assembly: InternalsVisibleTo("SamplesApp")]
 [assembly: InternalsVisibleTo("SamplesApp.Droid")]
 [assembly: InternalsVisibleTo("SamplesApp.macOS")]
@@ -20,3 +22,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Uno.UI.FluentTheme.v2")]
 
 [assembly: AssemblyMetadata("IsTrimmable", "True")]
+
+[assembly: System.Reflection.Metadata.MetadataUpdateHandler(typeof(Uno.UI.RuntimeTypeMetadataUpdateHandler))]

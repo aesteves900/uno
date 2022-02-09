@@ -750,12 +750,30 @@ namespace Windows.UI.Xaml.Controls
 
 		public override CGRect Frame
 		{
-			get => base.Frame;
+			get
+			{
+				try
+				{
+					return base.Frame;
+				}
+				catch
+				{
+					Console.WriteLine("ListViewBaseInternalContainer get failed");
+					return CGRect.Empty;
+				}
+			}
+
 			set
 			{
-				base.Frame = value;
-				UpdateContentViewFrame();
-				UpdateContentLayoutSlots(value);
+				try
+				{
+					base.Frame = value;
+					UpdateContentViewFrame();
+				}
+				catch
+				{
+					Console.WriteLine("ListViewBaseInternalContainer set failed");
+				}
 			}
 		}
 
@@ -772,7 +790,6 @@ namespace Windows.UI.Xaml.Controls
 				}
 				base.Bounds = value;
 				UpdateContentViewFrame();
-				UpdateContentLayoutSlots(Frame);
 			}
 		}
 
@@ -797,8 +814,19 @@ namespace Windows.UI.Xaml.Controls
 			var content = Content;
 			if (content != null)
 			{
-				LayoutInformation.SetLayoutSlot(content, frame);
-				content.LayoutSlotWithMarginsAndAlignments = frame;
+				var layoutSlot = LayoutInformation.GetLayoutSlot(content);
+				var layoutSlotWithMarginsAndAlignments = content.LayoutSlotWithMarginsAndAlignments;
+
+				//The LayoutInformation within ArrangeChild does not take into account the offset relative to the native ListView, so we apply that offset here.
+				//This is needed for TransformToVisual to work
+				layoutSlot.X = frame.X;
+				layoutSlot.Y = frame.Y;
+
+				layoutSlotWithMarginsAndAlignments.X += frame.X;
+				layoutSlotWithMarginsAndAlignments.Y += frame.Y;
+
+				LayoutInformation.SetLayoutSlot(content, layoutSlot);
+				content.LayoutSlotWithMarginsAndAlignments = layoutSlotWithMarginsAndAlignments;
 			}
 		}
 

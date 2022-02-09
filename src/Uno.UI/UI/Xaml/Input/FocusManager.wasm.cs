@@ -57,6 +57,13 @@ namespace Windows.UI.Xaml.Input
 					_skipNativeFocus = false;
 					break;
 				}
+				else if (
+					parent is FrameworkElement fe &&
+					(!fe.AllowFocusOnInteraction || !fe.IsTabStop))
+				{
+					// Stop propagating, this element does not want to receive focus.
+					break;
+				}
 				else if (parent is Control control && control.IsFocusable)
 				{
 					ProcessControlFocused(control);
@@ -87,7 +94,7 @@ namespace Windows.UI.Xaml.Input
 
 			if (focusManager?.InitialFocus == true)
 			{
-				 // Do not focus natively on initial focus so the soft keyboard is not opened
+				// Do not focus natively on initial focus so the soft keyboard is not opened
 				return false;
 			}
 
@@ -124,13 +131,35 @@ namespace Windows.UI.Xaml.Input
 			}
 			else if (focused != null)
 			{
+				// Special handling for RootVisual - which is not focusable on managed side
+				// but is focusable on native side. The purpose of this trick is to allow
+				// us to recognize, that the page was focused by tabbing from the address bar
+				// and focusing the first focusable element on the page instead.
+				if (focused is RootVisual rootVisual)
+				{					
+					var firstFocusable = FocusManager.FindFirstFocusableElement(rootVisual);
+					if (firstFocusable is FrameworkElement frameworkElement)
+					{
+						if (_log.Value.IsEnabled(LogLevel.Debug))
+						{
+							_log.Value.LogDebug(
+								$"Root visual focused - caused by browser keyboard navigation to the page, " +
+								$"moving focus to actual first focusable element - {frameworkElement?.ToString() ?? "[null]"}.");
+						}
+						frameworkElement.Focus(FocusState.Keyboard);
+					}
+					return;
+				}
+
 				ProcessElementFocused(focused);
 			}
 			else
 			{
 				// This might occur if a non-Uno element receives focus
 				var focusManager = VisualTree.GetFocusManagerForElement(Window.Current.RootElement);
-				focusManager.ClearFocus();
+
+				// The focus manager may be null if JS raises focusin/blur before the app is initialized.
+				focusManager?.ClearFocus();
 			}
 		}
 

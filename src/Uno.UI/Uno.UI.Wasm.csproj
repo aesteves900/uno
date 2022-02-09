@@ -56,9 +56,6 @@
 	<ItemGroup>
 		<PackageReference Include="Microsoft.TypeScript.MSBuild" />
 		<PackageReference Include="Uno.SourceGenerationTasks" />
-		<PackageReference Include="Uno.MonoAnalyzers" Condition="!$(_IsNetCore)">
-			<PrivateAssets>all</PrivateAssets>
-		</PackageReference>
 		<PackageReference Include="System.Memory" Version="4.5.2" />
 	</ItemGroup>
 
@@ -113,6 +110,7 @@
 
 	<Import Project="..\SourceGenerators\Uno.UI.SourceGenerators\Content\Uno.UI.SourceGenerators.props" />
 	<Import Project="..\Uno.UI\MixinGeneration.targets" />
+	<Import Project="..\Uno.UI\XamlMerge.targets" />
 
 	<Target Name="_UnoUIWasmOverrideNuget" AfterTargets="AfterBuild" DependsOnTargets="BuiltProjectOutputGroup" Condition="'$(UnoNugetOverrideVersion)'!=''">
 

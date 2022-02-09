@@ -48,6 +48,10 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 		private readonly Dictionary<string, string[]> _uiAutomationMappings;
 		private readonly string _configuration;
 		private readonly bool _isDebug;
+		/// <summary>
+		/// Should hot reload-related calls be generated? By default this is true iff building in debug, but it can be forced to always true or false using the "UnoForceHotReloadCodeGen" project flag.
+		/// </summary>
+		private readonly bool _isHotReloadEnabled;
 		private readonly string _projectDirectory;
 		private readonly string _projectFullPath;
 		private readonly bool _outputSourceComments = true;
@@ -79,16 +83,6 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 
 		private bool IsUnoFluentAssembly
 			=> _defaultNamespace == "Uno.UI.FluentTheme" || _defaultNamespace.StartsWith("Uno.UI.FluentTheme.v");
-
-		/// <summary>
-		/// Resource files that should be initialized first, in given order, because other resource declarations depend on them.
-		/// </summary>
-		private static readonly string[] _baseResourceDependencies = new[]
-		{
-			"SystemResources.xaml",
-			"Generic.xaml",
-			"Generic.Native.xaml",
-		};
 
 		private const string WinUIThemeResourcePathSuffixFormatString = "themeresources_v{0}.xaml";
 		private static string WinUICompactPathSuffix = Path.Combine("DensityStyles", "Compact.xaml");
@@ -180,6 +174,15 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 				_xamlResourcesTrimming = xamlResourcesTrimming;
 			}
 
+			if (bool.TryParse(context.GetMSBuildPropertyValue("UnoForceHotReloadCodeGen"), out var isHotReloadEnabled))
+			{
+				_isHotReloadEnabled = isHotReloadEnabled;
+			}
+			else
+			{
+				_isHotReloadEnabled = _isDebug;
+			}
+
 			_targetPath = Path.Combine(
 				_projectDirectory,
 				context.GetMSBuildPropertyValue("IntermediateOutputPath")
@@ -248,7 +251,7 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 			return link;
 		}
 
-		public KeyValuePair<string, string>[] Generate()
+		public KeyValuePair<string, string>[] Generate(GenerationRunInfo generationRunInfo)
 		{
 			var stopwatch = Stopwatch.StartNew();
 
@@ -310,12 +313,15 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 									defaultLanguage: _defaultLanguage,
 									isWasm: _isWasm,
 									isDebug: _isDebug,
+									isHotReloadEnabled: _isHotReloadEnabled,
+									isDesignTimeBuild: _isDesignTimeBuild,
 									skipUserControlsInVisualTree: _skipUserControlsInVisualTree,
 									shouldAnnotateGeneratedXaml: _shouldAnnotateGeneratedXaml,
 									isUnoAssembly: IsUnoAssembly,
 									isLazyVisualStateManagerEnabled: _isLazyVisualStateManagerEnabled,
 									generatorContext: _generatorContext,
-									xamlResourcesTrimming: _xamlResourcesTrimming
+									xamlResourcesTrimming: _xamlResourcesTrimming,
+									generationRunFileInfo: generationRunInfo.GetRunFileInfo(file.UniqueID)
 								)
 								.GenerateFile()
 						)
@@ -694,7 +700,7 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 								if (IsUnoAssembly && _xamlSourceFiles.Any())
 								{
 									// Build master dictionary
-									foreach (var dictProperty in map.GetAllDictionaryProperties(_baseResourceDependencies))
+									foreach (var dictProperty in map.GetAllDictionaryProperties())
 									{
 										writer.AppendLineInvariant("MasterDictionary.MergedDictionaries.Add({0});", dictProperty);
 									}

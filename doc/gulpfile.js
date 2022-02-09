@@ -78,13 +78,9 @@ function scripts(done) {
         `!${assets}/main.js`,
         `!${assets}/vendor/*.js`])
         .pipe(gulpif(isDebug, sourcemaps.init()))
-        .pipe(gulpif(isDebug, sourcemaps.mapSources(function (sourcePath) {
-            return '../' + sourcePath;
-        })))
         .pipe(concat('docfx.js'))
-        .pipe(gulpif(isDebug, sourcemaps.write('.', {includeContent: false, sourceRoot: '../'})))
+        .pipe(gulpif(isDebug, sourcemaps.write()))
         .pipe(gulpif(!isDebug, uglify()))
-        .pipe(stripImportExport())
         .pipe(dest(`${assets}/styles/`));
 
     done();
@@ -138,6 +134,8 @@ const run = parallel(serve, watch);
 exports.build = build;
 
 exports.default = series(build, run);
+
+exports.clean = series(clean);
 
 exports.debug = series(useDebug, build, run);
 

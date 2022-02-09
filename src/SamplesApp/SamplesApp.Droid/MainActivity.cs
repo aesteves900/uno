@@ -11,6 +11,9 @@ using Uno.UI.ViewManagement;
 namespace SamplesApp.Droid
 {
 	[Activity(
+#if DEBUG	// Disabled because of https://github.com/xamarin/xamarin-android/issues/6463
+			Exported = true,
+#endif
 			MainLauncher = true,
 			ConfigurationChanges = global::Uno.UI.ActivityHelper.AllConfigChanges,
 			WindowSoftInputMode = SoftInput.AdjustPan | SoftInput.StateHidden
@@ -80,7 +83,7 @@ namespace SamplesApp.Droid
 	}
 
 
-	[Activity]
+	[Activity(Exported = true)]
 	[IntentFilter(
 		new[] {
 			Android.Content.Intent.ActionView

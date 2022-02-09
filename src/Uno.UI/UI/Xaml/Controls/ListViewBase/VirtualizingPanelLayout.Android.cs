@@ -646,9 +646,9 @@ namespace Windows.UI.Xaml.Controls
 					continue;
 				}
 
-#pragma warning disable CS0618
+#pragma warning disable CS0618 // Type or member is obsolete
 				if (vh.AdapterPosition != position)
-#pragma warning restore CS0618
+#pragma warning restore CS0618 // Type or member is obsolete
 				{
 					continue;
 				}
@@ -1199,7 +1199,7 @@ namespace Windows.UI.Xaml.Controls
 			int maxPossibleDelta;
 			if (fillDirection == GeneratorDirection.Forward)
 			{
-				var contentEnd = Math.Max(GetContentEnd(), ItemsPresenterMinExtent - ContentOffset);
+				var contentEnd = GetContentEnd();
 				// If this value is negative, collection dimensions are larger than all children and we should not scroll
 				maxPossibleDelta = Math.Max(0, contentEnd - Extent);
 				// In the rare case that GetContentStart() is positive (see below), permit a positive value.
@@ -2375,9 +2375,14 @@ namespace Windows.UI.Xaml.Controls
 		}
 
 		/// <summary>
-		/// Return the farthest extent of all currently materialized content.
+		/// Return the farthest extent of all currently materialized content, including the extent of the notional 'panel' defined by the ItemsPresenter.
 		/// </summary>
-		private int GetContentEnd()
+		private int GetContentEnd() => Math.Max(GetItemsContentEnd(), ItemsPresenterMinExtent - ContentOffset);
+
+		/// <summary>
+		/// Return the farthest extent of all currently materialized content items. Most of the time <see cref="GetContentEnd"/> should be used instead.
+		/// </summary>
+		private int GetItemsContentEnd()
 		{
 			int contentEnd = GetLeadingGroup(GeneratorDirection.Forward)?.End ?? GetHeaderEnd();
 			if (FooterViewCount > 0)

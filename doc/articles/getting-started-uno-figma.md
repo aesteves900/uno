@@ -2,11 +2,9 @@
 It is now possible to use Figma to design and build Uno Platform applications. Designers can use the highly collaborative Figma environment to fine-tune the User Experience (UX) while putting in place building blocks of an application following the Material Design language.
 Using the [Uno Platform Figma Plugin](https://www.figma.com/community/plugin/1045528009520465828/Uno-Platform), it is possible to visualize how the application will render and export actual XAML to use in Visual Studio for the application. This application is also ready for localization, ready for accessibility and can optionally use of [Uno Extensions](https://github.com/unoplatform/uno.extensions) (Reactive, Navigation...).
 ## Designer's Side
-
-### Quick Start
 1. Duplicate the [Uno Material Toolkit Document](https://www.figma.com/community/file/1045411863379988189).
 2. Open the document and go to the _Getting started_ page. There's a lot of information there to adjust the colors, the typography and how to start a new project.
-3. Open the _Theme_ page and **ensure that nothing is selected** in the document. On the right-hand side of Figma, there's the **Color Styles** section where it is possible to adjust colors for the styles of the application. When passing the mouse over a specific color, there's an _Edit style_ button appearing. This button allows for picking another color for the chosen style.
+3. Open the _Theme_ page and ensure that you have **nothing selected** in the document. On the right-hand side of Figma, there's the `Color Styles` section where it is possible to adjust colors for the styles of the application. When passing the mouse over a specific color, there's an _Edit style_ button appearing. This button allows picking another color for the chosen style.
 4. Open the _Example app_ page. You can rename it to fit your application name or even create new ones as needed.
 5. Creating a new page: Open the _Assets_ pane (at the top/left of the screen) and open the `Patterns & Templates / Page templates` section. Pick one of the templates and drag it on the design surface.
 6. Adding components to an existing page: Open the _Assets_ page (at the top/left of the screen) and open the `Components` section. Pick a desired component and drag it inside an existing page on the design surface.

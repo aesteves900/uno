@@ -22,8 +22,6 @@ namespace Windows.UI.Xaml
 {
 	public partial class UIElement : DependencyObject
 	{
-		internal Size _unclippedDesiredSize;
-		internal Point _visualOffset;
 		private ContainerVisual _visual;
 		internal double _canvasTop;
 		internal double _canvasLeft;
@@ -31,8 +29,6 @@ namespace Windows.UI.Xaml
 
 		public UIElement()
 		{
-			_log = this.Log();
-			_logDebug = _log.IsEnabled(LogLevel.Debug) ? _log : null;
 			_isFrameworkElement = this is FrameworkElement;
 
 			Initialize();
@@ -43,6 +39,8 @@ namespace Windows.UI.Xaml
 
 			UpdateHitTest();
 		}
+
+		internal bool IsChildrenRenderOrderDirty { get; set; } = true;
 
 		partial void InitializeKeyboard();
 
@@ -88,11 +86,6 @@ namespace Windows.UI.Xaml
 			}
 		} 
 
-		/// <summary>
-		/// The origin of the view's bounds relative to its parent.
-		/// </summary>
-		internal Point RelativePosition => _visualOffset;
-
 		internal bool ClippingIsSetByCornerRadius { get; set; } = false;
 
 		public void AddChild(UIElement child, int? index = null)
@@ -123,7 +116,7 @@ namespace Windows.UI.Xaml
 			child.SetParent(this);
 			OnAddingChild(child);
 
-			if (index is int actualIndex && actualIndex != _children.Count)
+			if (index is { } actualIndex && actualIndex != _children.Count)
 			{
 				var currentVisual = _children[actualIndex];
 				_children.Insert(actualIndex, child);
@@ -136,7 +129,26 @@ namespace Windows.UI.Xaml
 			}
 
 			OnChildAdded(child);
+			Visual.IsChildrenRenderOrderDirty = true;
 
+			// Reset to original (invalidated) state
+			child.ResetLayoutFlags();
+
+			if (IsMeasureDirtyPathDisabled)
+			{
+				FrameworkElementHelper.SetUseMeasurePathDisabled(child); // will invalidate too
+			}
+			else
+			{
+				child.InvalidateMeasure();
+			}
+
+			if (child.IsArrangeDirty && !IsArrangeDirty)
+			{
+				InvalidateArrange();
+			}
+
+			// Force a new measure of this element (the parent of the new child)
 			InvalidateMeasure();
 		}
 
@@ -150,12 +162,27 @@ namespace Windows.UI.Xaml
 			if (_children.Remove(child))
 			{
 				InnerRemoveChild(child);
+
+				// Force a new measure of this element
+				InvalidateMeasure();
+
 				return true;
 			}
-			else
+
+			return false;
+		}
+
+		internal UIElement ReplaceChild(int index, UIElement child)
+		{
+			var previous = _children[index];
+
+			if (!ReferenceEquals(child, previous))
 			{
-				return false;
+				RemoveChild(previous);
+				AddChild(child, index);
 			}
+
+			return previous;
 		}
 
 		internal void ClearChildren()
@@ -172,7 +199,11 @@ namespace Windows.UI.Xaml
 		private void InnerRemoveChild(UIElement child)
 		{
 			child.SetParent(null);
-			Visual?.Children.Remove(child.Visual);
+			if (Visual != null)
+			{
+				Visual.Children.Remove(child.Visual);
+				Visual.IsChildrenRenderOrderDirty = true;
+			}
 			OnChildRemoved(child);
 		}
 
@@ -197,7 +228,14 @@ namespace Windows.UI.Xaml
 			{
 				LayoutInformation.SetDesiredSize(this, new Size(0, 0));
 				_size = new Size(0, 0);
-			}			
+			}
+
+			if (FeatureConfiguration.UIElement.UseInvalidateMeasurePath && this.GetParent() is UIElement parent)
+			{
+				// Need to invalidate the parent when the visibility changes to ensure its
+				// algorithm is doing its layout properly.
+				parent.InvalidateMeasure();
+			}
 		}
 
 		partial void OnRenderTransformSet()

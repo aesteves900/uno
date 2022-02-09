@@ -219,6 +219,31 @@ namespace Uno.UI
 			/// disabled to improve application performance on WebAssembly. See See #7005 for additional details.
 			/// </summary>
 			public static bool HandleLoadUnloadExceptions { get; set; } = true;
+
+			/// <summary>
+			/// When true, any FrameworkElement with Background non-null will intercept pointer events. When set to false, the default, only
+			/// certain views (Panels, Borders, and ContentPresenters) will intercept pointers if their background is non-null, while others (Control)
+			/// will not, which is how WinUI behaves. Set to true if you have code written for earlier versions of Uno that relies upon the old behavior.
+			/// </summary>
+			public static bool UseLegacyHitTest { get; set; } = false;
+		}
+
+		public static class FrameworkTemplate
+		{
+			/// <summary>
+			/// Determines if the pooling is enabled. If false, all requested instances are new.
+			/// </summary>
+			public static bool IsPoolingEnabled { get => FrameworkTemplatePool.IsPoolingEnabled; set => FrameworkTemplatePool.IsPoolingEnabled = value; }
+
+			/// <summary>
+			/// Determines the duration for which a pooled template stays alive
+			/// </summary>
+			public static TimeSpan TimeToLive { get => FrameworkTemplatePool.TimeToLive; set => FrameworkTemplatePool.TimeToLive = value; }
+
+			/// <summary>
+			/// Defines the ratio of memory usage at which the pools starts to stop pooling elligible views, between 0 and 1
+			/// </summary>
+			public static float HighMemoryThreshold { get => FrameworkTemplatePool.HighMemoryThreshold; set => FrameworkTemplatePool.HighMemoryThreshold = value; }
 		}
 
 		public static class Image
@@ -265,6 +290,15 @@ namespace Uno.UI
 			/// </summary>
 			public static bool UseNativePopup { get; set; } = true;
 #endif
+
+			/// <summary>
+			/// By default, light dismiss is disabled in UWP/WinUI unless
+			/// <see cref="Windows.UI.Xaml.Controls.Primitives.Popup.IsLightDismissEnabled"/> is explicitly set to true.
+			/// In earlier versions of Uno Platform, this property defaulted
+			/// to true, which was an incorrect behavior. If your code depends on this
+			/// legacy behavior, use this property to override it.
+			/// </summary>
+			public static bool EnableLightDismissByDefault { get; set; } = false;
 		}
 
 		public static class ProgressRing
@@ -470,6 +504,12 @@ namespace Uno.UI
 		public static class UIElement
 		{
 			/// <summary>
+			/// Call the .MeasureOverride only on element explicitly invalidating
+			/// their measure and when the size changed.
+			/// </summary>
+			public static bool UseInvalidateMeasurePath { get; set; } = true;
+
+			/// <summary>
 			/// [DEPRECATED]
 			/// Not used anymore, does nothing.
 			/// </summary>
@@ -555,11 +595,22 @@ namespace Uno.UI
 			[Obsolete("This flag is no longer used.")]
 			[EditorBrowsable(EditorBrowsableState.Never)]
 			public static int MaxRecursiveResolvingDepth { get; set; } = 12;
+
+			/// <summary>
+			/// By default, XAML hot reload will be enabled when building in debug. Setting this flag to 'true' will force it to be disabled.
+			/// </summary>
+			public static bool ForceHotReloadDisabled { get; set; } = false;
 		}
 
 		public static class DatePicker
 		{
 #if __IOS__
+			/// <summary>
+			/// Gets or set whether the <see cref="Windows.UI.Xaml.Controls.DatePicker" /> rendered matches the Legacy Style or not.
+			/// </summary>
+			/// <remarks>
+			/// Important: This flag will only have an impact on iOS 14 devices
+			/// </remarks>
 			public static bool UseLegacyStyle { get; set; } = false;
 #endif
 		}
@@ -567,6 +618,12 @@ namespace Uno.UI
 		public static class TimePicker
 		{
 #if __IOS__
+			/// <summary>
+			/// Gets or set whether the TimePicker rendered matches the Legacy Style or not.
+			/// </summary>
+			/// <remarks>
+			/// Important: This flag will only have an impact on iOS 14 devices
+			/// </remarks>
 			public static bool UseLegacyStyle { get; set; } = false;
 #endif
 		}

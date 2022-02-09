@@ -228,14 +228,8 @@ namespace Windows.UI.Xaml.Controls
 		{
 			if (_textBoxView != null)
 			{
-				if (FeatureConfiguration.TextBox.UseLegacyInputScope)
-				{
-					_textBoxView.InputType = types;
-				}
-				else
-				{
-					_textBoxView.SetRawInputType(types);
-				}
+				_textBoxView.InputType = types;
+				_textBoxView.SetRawInputType(types);
 
 				if (!types.HasPasswordFlag())
 				{
@@ -392,7 +386,7 @@ namespace Windows.UI.Xaml.Controls
 			}
 		}
 
-		private protected override void OnIsEnabledChanged(IsEnabledChangedEventArgs e)
+		partial void OnIsEnabledChangedPartial(IsEnabledChangedEventArgs e)
 		{
 			if (_textBoxView != null)
 			{
@@ -417,29 +411,37 @@ namespace Windows.UI.Xaml.Controls
 			return style;
 		}
 
-		partial void OnIsReadonlyChangedPartial(DependencyPropertyChangedEventArgs e)
+		partial void OnIsReadonlyChangedPartial(DependencyPropertyChangedEventArgs e) => UpdateTextBoxViewReadOnly();
+
+		partial void OnIsTabStopChangedPartial() => UpdateTextBoxViewReadOnly();
+
+		private void UpdateTextBoxViewReadOnly()
 		{
-			if (_textBoxView != null)
+			if (_textBoxView == null)
 			{
-				var isReadOnly = IsReadOnly;
+				return;
+			}
 
-				_textBoxView.Focusable = !isReadOnly;
-				_textBoxView.FocusableInTouchMode = !isReadOnly;
-				_textBoxView.Clickable = !isReadOnly;
-				_textBoxView.LongClickable = !isReadOnly;
-				_textBoxView.SetCursorVisible(!isReadOnly);
+			// Both IsReadOnly = true and IsTabStop = false make the control
+			// not receive any input.
+			var isReadOnly = IsReadOnly || !IsTabStop;
 
-				if (isReadOnly)
+			_textBoxView.Focusable = !isReadOnly;
+			_textBoxView.FocusableInTouchMode = !isReadOnly;
+			_textBoxView.Clickable = !isReadOnly;
+			_textBoxView.LongClickable = !isReadOnly;
+			_textBoxView.SetCursorVisible(!isReadOnly);
+
+			if (isReadOnly)
+			{
+				_listener = _textBoxView.KeyListener;
+				_textBoxView.KeyListener = null;
+			}
+			else
+			{
+				if (_listener != null)
 				{
-					_listener = _textBoxView.KeyListener;
-					_textBoxView.KeyListener = null;
-				}
-				else
-				{
-					if (_listener != null)
-					{
-						_textBoxView.KeyListener = _listener;
-					}
+					_textBoxView.KeyListener = _listener;
 				}
 			}
 		}

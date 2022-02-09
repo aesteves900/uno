@@ -6,6 +6,8 @@ using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using static Private.Infrastructure.TestServices;
+using Windows.UI.Xaml;
+using Windows.UI;
 #if NETFX_CORE
 using Uno.UI.Extensions;
 #elif __IOS__
@@ -186,6 +188,122 @@ namespace Uno.UI.RuntimeTests.Tests.Windows_UI_Xaml_Controls
 			textBox.Select(20, 5);
 			Assert.AreEqual(10, textBox.SelectionStart);
 			Assert.AreEqual(0, textBox.SelectionLength);
+		}
+
+#if __IOS__
+		[Ignore("Disabled as not working properly. See https://github.com/unoplatform/uno/issues/8016")]
+#endif
+		[TestMethod]
+		public async Task When_SelectionStart_Set()
+		{
+			var textBox = new TextBox
+			{
+				Text = "0123456789"
+			};
+
+			var button = new Button()
+			{
+				Content = "Some button"
+			};
+
+			var stackPanel = new StackPanel()
+			{
+				Children =
+				{
+					textBox,
+					button
+				}
+			};
+
+			WindowHelper.WindowContent = stackPanel;
+			await WindowHelper.WaitForLoaded(textBox);
+
+			button.Focus(FocusState.Programmatic);
+
+			await WindowHelper.WaitForIdle();
+
+			textBox.SelectionStart = 3;
+
+			textBox.Focus(FocusState.Programmatic);
+			Assert.AreEqual(3, textBox.SelectionStart);
+		}
+
+#if __IOS__
+		[Ignore("Disabled as not working properly. See https://github.com/unoplatform/uno/issues/8016")]
+#endif
+		[TestMethod]
+		public async Task When_Focus_Changes_SelectionStart_Preserved()
+		{
+			var textBox = new TextBox
+			{
+				Text = "0123456789"
+			};
+
+			var button = new Button()
+			{
+				Content = "Some button"
+			};
+
+			var stackPanel = new StackPanel()
+			{
+				Children =
+				{
+					textBox,
+					button
+				}
+			};
+
+			WindowHelper.WindowContent = stackPanel;
+			await WindowHelper.WaitForLoaded(textBox);
+
+			textBox.Focus(FocusState.Programmatic);
+
+			await WindowHelper.WaitForIdle();
+
+			textBox.SelectionStart = 3;
+
+			button.Focus(FocusState.Programmatic);
+			Assert.AreEqual(3, textBox.SelectionStart);
+
+			textBox.Focus(FocusState.Programmatic);
+			Assert.AreEqual(3, textBox.SelectionStart);
+		}
+
+		[TestMethod]
+		public async Task When_IsEnabled_Set()
+		{
+			var foregroundColor = new SolidColorBrush(Colors.Red);
+			var disabledColor = new SolidColorBrush(Colors.Blue);
+
+			var textbox = new TextBox
+			{
+				Text = "Original Text",
+				Foreground = foregroundColor,
+				Style = TestsResourceHelper.GetResource<Style>("MaterialOutlinedTextBoxStyle"),
+				IsEnabled = false
+			};
+
+			var stackPanel = new StackPanel()
+			{
+				Children = { textbox }
+			};
+
+
+			WindowHelper.WindowContent = stackPanel;
+			await WindowHelper.WaitForLoaded(textbox);
+
+
+			var contentPresenter = (ScrollViewer)textbox.FindName("ContentElement");
+
+			await WindowHelper.WaitForIdle();
+
+			Assert.IsFalse(textbox.IsEnabled);
+			Assert.AreEqual(contentPresenter.Foreground, disabledColor);
+
+			textbox.IsEnabled = true;
+
+			Assert.IsTrue(textbox.IsEnabled);
+			Assert.AreEqual(contentPresenter.Foreground, foregroundColor);
 		}
 	}
 }

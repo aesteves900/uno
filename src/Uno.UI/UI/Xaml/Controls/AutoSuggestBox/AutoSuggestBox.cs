@@ -49,12 +49,20 @@ namespace Windows.UI.Xaml.Controls
 			_suggestionsList = GetTemplateChild("SuggestionsList") as ListView;
 			_queryButton = GetTemplateChild("QueryButton") as Button;
 
+			// Uno specific: If the user enabled the legacy behavior for popup light dismiss default
+			// we force it to false explicitly to make sure the AutoSuggestBox works correctly.
+			if(FeatureConfiguration.Popup.EnableLightDismissByDefault)
+			{
+				_popup.IsLightDismissEnabled = false;
+			}
+
 #if __ANDROID__
 			_popup.DisableFocus();
 #endif
 
 			UpdateQueryButton();
 			UpdateTextBox();
+			UpdateDescriptionVisibility(true);
 
 			_textBoxBinding = new BindingPath("Text", null) { DataContext = _textBox, ValueChangedListener = this };
 
@@ -438,6 +446,21 @@ namespace Windows.UI.Xaml.Controls
 					Reason = tb._textChangeReason,
 					Owner = tb
 				});
+			}
+		}
+
+		private void UpdateDescriptionVisibility(bool initialization)
+		{
+			if (initialization && Description == null)
+			{
+				// Avoid loading DescriptionPresenter element in template if not needed.
+				return;
+			}
+
+			var descriptionPresenter = this.FindName("DescriptionPresenter") as ContentPresenter;
+			if (descriptionPresenter != null)
+			{
+				descriptionPresenter.Visibility = Description != null ? Visibility.Visible : Visibility.Collapsed;
 			}
 		}
 	}

@@ -637,6 +637,11 @@ namespace Windows.UI.Xaml
 		/// <summary>
 		/// Apply the default style for this element, if one is defined.
 		/// </summary>
+		/// <remarks>
+		/// The default app-wide style is always applied (using the lower priority ImplicitStyle) so that setters that are not
+		/// set by a tree-provided style are still applied. (e.g. a tree-provided implicit style may only change the Foreground of a Button,
+		/// and the Template property still needs to be applied for the template to work).
+		/// </remarks>
 		private protected void ApplyDefaultStyle()
 		{
 			if (_defaultStyleApplied)
@@ -651,6 +656,9 @@ namespace Windows.UI.Xaml
 			// Although this is the default style, we use the ImplicitStyle enum value (which is otherwise unused) to ensure that it takes precedence
 			//over inherited property values. UWP's precedence system is simpler than WPF's, from which the enum is derived.
 			OnStyleChanged(null, style, DependencyPropertyValuePrecedences.ImplicitStyle);
+#if DEBUG
+			AppliedDefaultStyle = style;
+#endif
 		}
 
 		/// <summary>
@@ -712,14 +720,19 @@ namespace Windows.UI.Xaml
 		}
 		#endregion
 
+		internal bool IsEnabledSuppressed => _suppressIsEnabled;
+
 		/// <summary>
 		/// Provides the ability to disable <see cref="IsEnabled"/> value changes, e.g. in the context of ICommand CanExecute.
 		/// </summary>
 		/// <param name="suppress">If true, <see cref="IsEnabled"/> will always be false</param>
 		private protected void SuppressIsEnabled(bool suppress)
 		{
-			_suppressIsEnabled = suppress;
-			this.CoerceValue(IsEnabledProperty);
+			if (_suppressIsEnabled != suppress)
+			{
+				_suppressIsEnabled = suppress;
+				this.CoerceValue(IsEnabledProperty);
+			}
 		}
 
 		private object CoerceIsEnabled(object baseValue)
@@ -795,7 +808,14 @@ namespace Windows.UI.Xaml
 		}
 
 		internal override bool IsViewHit()
-			=> Background != null;
+		{
+			if (FeatureConfiguration.FrameworkElement.UseLegacyHitTest)
+			{
+				return Background != null;
+			}
+			
+			return false;
+		}
 
 		/// <summary>
 		/// The list of available children render phases, if this

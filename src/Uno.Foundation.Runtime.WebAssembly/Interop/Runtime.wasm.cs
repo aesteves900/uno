@@ -246,7 +246,7 @@ namespace Uno.Foundation
 			}
 		}
 
-		private static string InnerInvokeJS(String str)
+		private static string InnerInvokeJS(string str)
 		{
 			if (_logger.IsEnabled(LogLevel.Debug))
 			{
@@ -283,7 +283,13 @@ namespace Uno.Foundation
 			}
 			else
 			{
-				var commandBuilder = new IndentedStringBuilder();
+				var commandBuilder =
+#if DEBUG
+					new IndentedStringBuilder();
+#else
+					new StringBuilder();
+#endif
+
 				commandBuilder.Append("(function() {");
 
 				var parameters = formattable.GetArguments();
@@ -296,15 +302,24 @@ namespace Uno.Foundation
 					{
 						if (!mappedParameters.TryGetValue(jsObject, out var parameterReference))
 						{
+							if (!jsObject.Handle.IsAlive)
+							{
+								throw new InvalidOperationException("JSObjectHandle is invalid.");
+							}
+
 							mappedParameters[jsObject] = parameterReference = $"__parameter_{i}";
-							commandBuilder.AppendLine($"var {parameterReference} = {jsObject.Handle.GetNativeInstance()};");
+							commandBuilder.AppendLine($"const {parameterReference} = {jsObject.Handle.GetNativeInstance()};");
 						}
 
 						parameters[i] = parameterReference;
 					}
 				}
 
+#if DEBUG
 				commandBuilder.AppendFormatInvariant(formattable.Format, parameters);
+#else
+				commandBuilder.AppendFormat(CultureInfo.InvariantCulture, formattable.Format, parameters);
+#endif
 				commandBuilder.Append("return \"ok\"; })();");
 
 				command = commandBuilder.ToString();

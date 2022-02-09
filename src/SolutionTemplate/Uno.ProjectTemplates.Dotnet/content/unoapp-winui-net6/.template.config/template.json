@@ -131,7 +131,7 @@
       "defaultValue": "true",
       "description": "Enables the WinUI desktop platform support project"
     },
-    "vscodeWasm": {
+    "vscode": {
       "type": "parameter",
       "dataType": "bool",
       "defaultValue": "false",
@@ -157,11 +157,7 @@
     },
     {
       "condition": "winui-desktop",
-      "path": "UnoWinUIQuickStart.Windows.Desktop\\UnoWinUIQuickStart.Windows.Desktop.csproj"
-    },
-    {
-      "condition": "winui-desktop",
-      "path": "UnoWinUIQuickStart.Windows.Package\\UnoWinUIQuickStart.Windows.Package.csproj"
+      "path": "UnoWinUIQuickStart.Windows\\UnoWinUIQuickStart.Windows.csproj"
     },
     {
       "condition": "Wasm",
@@ -218,7 +214,7 @@
           ]
         },
         {
-          "condition": "(!vscodeWasm)",
+          "condition": "(!vscode)",
           "exclude": [
             ".vscode/**/*"
           ]

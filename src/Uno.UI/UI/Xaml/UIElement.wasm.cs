@@ -15,10 +15,6 @@ using Uno.UI.Extensions;
 using Uno.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.System;
-using System.Reflection;
-
-using Uno.Core.Comparison;
-using Uno.Foundation.Runtime.WebAssembly.Interop;
 
 namespace Windows.UI.Xaml
 {
@@ -27,30 +23,90 @@ namespace Windows.UI.Xaml
 		internal const string DefaultHtmlTag = "div";
 
 		private readonly GCHandle _gcHandle;
+		private readonly WasmConfig _wasmConfig;
 
-		private static class UIElementNativeRegistrar
+		/// <summary>
+		/// Config flags for UIElement specific to WASM platform
+		/// </summary>
+		[Flags]
+		private enum WasmConfig : int
 		{
-			private static readonly Dictionary<Type, int> _classNames = new Dictionary<Type, int>();
-
-			internal static int GetForType(Type type)
-			{
-				if (!_classNames.TryGetValue(type, out var classNamesRegistrationId))
-				{
-					_classNames[type] = classNamesRegistrationId = WindowManagerInterop.RegisterUIElement(type.FullName, GetClassesForType(type).ToArray(), type.Is<FrameworkElement>());
-				}
-
-				return classNamesRegistrationId;
-			}
-
-			private static IEnumerable<string> GetClassesForType(Type type)
-			{
-				while (type != null && type != typeof(object))
-				{
-					yield return type.Name.ToLowerInvariant();
-					type = type.BaseType;
-				}
-			}
+			IsExternalElement = 1,
+			IsSvg = 1 << 1,
 		}
+
+		public UIElement() : this(null, false) { }
+
+		public UIElement(string htmlTag = DefaultHtmlTag) : this(htmlTag, false) { }
+
+		public UIElement(string htmlTag, bool isSvg)
+		{
+			Initialize();
+
+			_gcHandle = GCHandle.Alloc(this, GCHandleType.Weak);
+			_isFrameworkElement = this is FrameworkElement;
+
+			var type = GetType();
+			var tag = HtmlElementHelper.GetHtmlTag(type, htmlTag);
+
+			HtmlTag = tag.Name;
+			Handle = GCHandle.ToIntPtr(_gcHandle);
+			HtmlId = Handle;
+			if (isSvg)
+			{
+				_wasmConfig |= WasmConfig.IsSvg;
+			}
+			if (tag.IsExternallyDefined)
+			{
+				_wasmConfig |= WasmConfig.IsExternalElement;
+			}
+
+			Uno.UI.Xaml.WindowManagerInterop.CreateContent(
+				htmlId: HtmlId,
+				htmlTag: HtmlTag,
+				handle: Handle,
+				uiElementRegistrationId: UIElementNativeRegistrar.GetForType(type),
+				htmlTagIsSvg: HtmlTagIsSvg,
+				isFocusable: false
+			);
+
+			InitializePointers();
+			UpdateHitTest();
+		}
+
+		~UIElement()
+		{
+			try
+			{
+				if (this.Log().IsEnabled(Uno.Foundation.Logging.LogLevel.Debug))
+				{
+					this.Log().Debug($"Collecting UIElement for [{HtmlId}]");
+				}
+
+				Cleanup();
+
+				Uno.UI.Xaml.WindowManagerInterop.DestroyView(HtmlId);
+			}
+			catch (Exception e)
+			{
+				if (this.Log().IsEnabled(Uno.Foundation.Logging.LogLevel.Warning))
+				{
+					this.Log().Warn($"Collection of UIElement for [{HtmlId}] failed", e);
+				}
+			}
+
+			_gcHandle.Free();
+		}
+
+		public IntPtr Handle { get; }
+
+		public IntPtr HtmlId { get; }
+
+		public string HtmlTag { get; }
+
+		public bool HtmlTagIsSvg => _wasmConfig.HasFlag(WasmConfig.IsSvg);
+
+		internal bool HtmlTagIsExternallyDefined => _wasmConfig.HasFlag(WasmConfig.IsExternalElement);
 
 		public Size MeasureView(Size availableSize, bool measureContent = true)
 		{
@@ -73,101 +129,6 @@ namespace Windows.UI.Xaml
 			var sizeParts = sizeString.Split(';');
 			return new Rect(double.Parse(sizeParts[0]), double.Parse(sizeParts[1]), double.Parse(sizeParts[2]), double.Parse(sizeParts[3]));
 		}
-
-		public UIElement() : this(null, false) { }
-
-		public UIElement(string htmlTag = DefaultHtmlTag) : this(htmlTag, false) { }
-
-		public UIElement(string htmlTag, bool isSvg)
-		{
-			_log = this.Log();
-			_logDebug = _log.IsEnabled(LogLevel.Debug) ? _log : null;
-
-			Initialize();
-
-			_gcHandle = GCHandle.Alloc(this, GCHandleType.Weak);
-			_isFrameworkElement = this is FrameworkElement;
-
-			HtmlTag = GetHtmlTag(htmlTag);
-			HtmlTagIsSvg = isSvg;
-
-			var type = GetType();
-
-			Handle = GCHandle.ToIntPtr(_gcHandle);
-			HtmlId = Handle;
-
-			Uno.UI.Xaml.WindowManagerInterop.CreateContent(
-				htmlId: HtmlId,
-				htmlTag: HtmlTag,
-				handle: Handle,
-				uiElementRegistrationId: UIElementNativeRegistrar.GetForType(type),
-				htmlTagIsSvg: HtmlTagIsSvg,
-				isFocusable: false
-			);
-
-			InitializePointers();
-			UpdateHitTest();
-		}
-
-		private static Dictionary<Type, string> _htmlTagCache = new Dictionary<Type, string>(FastTypeComparer.Default);
-		private static Type _htmlElementAttribute;
-		private static PropertyInfo _htmlTagAttributeTagGetter;
-		private static readonly Assembly _unoUIAssembly = typeof(UIElement).Assembly;
-
-		private string GetHtmlTag(string htmlTag)
-		{
-			var currentType = GetType();
-
-			if (currentType.Assembly != _unoUIAssembly)
-			{
-				if (_htmlElementAttribute == null)
-				{
-					_htmlElementAttribute = GetUnoUIRuntimeWebAssembly().GetType("Uno.UI.Runtime.WebAssembly.HtmlElementAttribute", true);
-					_htmlTagAttributeTagGetter = _htmlElementAttribute.GetProperty("Tag");
-				}
-
-				if (!_htmlTagCache.TryGetValue(currentType, out var htmlTagOverride))
-				{
-					// Set the tag from the internal explicit UIElement parameter
-					htmlTagOverride = htmlTag;
-
-					if (currentType.GetCustomAttribute(_htmlElementAttribute, true) is Attribute attr)
-					{
-						_htmlTagCache[currentType] = htmlTagOverride = _htmlTagAttributeTagGetter.GetValue(attr, Array.Empty<object>()) as string;
-					}
-
-					_htmlTagCache[currentType] = htmlTagOverride;
-				}
-
-				return htmlTagOverride;
-			}
-			else
-			{
-				return htmlTag;
-			}
-		}
-
-		~UIElement()
-		{
-			if (this.Log().IsEnabled(Uno.Foundation.Logging.LogLevel.Debug))
-			{
-				this.Log().Debug($"Collecting UIElement for [{HtmlId}]");
-			}
-
-			Cleanup();
-
-			Uno.UI.Xaml.WindowManagerInterop.DestroyView(HtmlId);
-
-			_gcHandle.Free();
-		}
-
-		public IntPtr Handle { get; }
-
-		public IntPtr HtmlId { get; }
-
-		public string HtmlTag { get; }
-
-		public bool HtmlTagIsSvg { get; }
 
 		protected internal void SetStyle(string name, string value)
 		{
@@ -355,6 +316,18 @@ namespace Windows.UI.Xaml
 			);
 		}
 
+		internal static UIElement GetElementFromHandle(IntPtr handle)
+		{
+			var gcHandle = GCHandle.FromIntPtr(handle);
+
+			if (gcHandle.IsAllocated && gcHandle.Target is UIElement element)
+			{
+				return element;
+			}
+
+			return null;
+		}
+
 		internal static UIElement GetElementFromHandle(int handle)
 		{
 			var gcHandle = GCHandle.FromIntPtr((IntPtr)handle);
@@ -421,6 +394,13 @@ namespace Windows.UI.Xaml
 			{
 				UpdateDOMProperties();
 			}
+
+			if (FeatureConfiguration.UIElement.UseInvalidateMeasurePath && this.GetParent() is UIElement parent)
+			{
+				// Need to invalidate the parent when the visibility changes to ensure its
+				// algorithm is doing its layout properly.
+				parent.InvalidateMeasure();
+			}
 		}
 
 		partial void OnOpacityChanged(DependencyPropertyChangedEventArgs args)
@@ -444,6 +424,13 @@ namespace Windows.UI.Xaml
 			if (FeatureConfiguration.UIElement.AssignDOMXamlProperties)
 			{
 				UpdateDOMProperties();
+			}
+
+			if (FeatureConfiguration.UIElement.UseInvalidateMeasurePath && this.GetParent() is UIElement parent)
+			{
+				// Need to invalidate the parent when the visibility changes to ensure its
+				// algorithm is doing its layout properly.
+				parent.InvalidateMeasure();
 			}
 		}
 
@@ -503,10 +490,27 @@ namespace Windows.UI.Xaml
 
 			OnChildAdded(child);
 
-			child.InvalidateMeasure();
+			child.ResetLayoutFlags();
+
+			if (IsMeasureDirtyPathDisabled)
+			{
+				FrameworkElementHelper.SetUseMeasurePathDisabled(child, eager: true, invalidate: true);
+			}
+			else
+			{
+				child.InvalidateMeasure();
+			}
 
 			// Arrange is required to unset the uno-unarranged CSS class
 			child.InvalidateArrange();
+
+			if (child.IsArrangeDirty && !IsArrangeDirty)
+			{
+				InvalidateArrange();
+			}
+
+			// Force a new measure of this element (the parent of the new child)
+			InvalidateMeasure();
 		}
 
 		public void ClearChildren()
@@ -534,6 +538,8 @@ namespace Windows.UI.Xaml
 			if (childParent != null)
 			{
 				Uno.UI.Xaml.WindowManagerInterop.RemoveView(HtmlId, child.HtmlId);
+
+				child.InvalidateMeasure();
 			}
 		}
 
@@ -574,6 +580,14 @@ namespace Windows.UI.Xaml
 			}
 
 			return false;
+		}
+
+		public UIElement ReplaceChild(int index, UIElement child)
+		{
+			var previous = _children[index];
+			RemoveChild(previous);
+			AddChild(child, index);
+			return previous;
 		}
 
 		internal void MoveChildTo(int oldIndex, int newIndex)
@@ -674,19 +688,27 @@ namespace Windows.UI.Xaml
 			return new RoutedEventArgs(src);
 		}
 
-		private static Assembly GetUnoUIRuntimeWebAssembly()
+		private static class UIElementNativeRegistrar
 		{
-			const string UnoUIRuntimeWebAssemblyName = "Uno.UI.Runtime.WebAssembly";
+			private static readonly Dictionary<Type, int> _classNames = new Dictionary<Type, int>();
 
-			if (PlatformHelper.IsNetCore)
+			internal static int GetForType(Type type)
 			{
-				// .NET Core fails to load assemblies property because of ALC issues: https://github.com/dotnet/runtime/issues/44269
-				return AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == UnoUIRuntimeWebAssemblyName)
-					?? throw new InvalidOperationException($"Unable to find {UnoUIRuntimeWebAssemblyName} in the loaded assemblies");
+				if (!_classNames.TryGetValue(type, out var classNamesRegistrationId))
+				{
+					_classNames[type] = classNamesRegistrationId = WindowManagerInterop.RegisterUIElement(type.FullName, GetClassesForType(type).ToArray(), type.Is<FrameworkElement>());
+				}
+
+				return classNamesRegistrationId;
 			}
-			else
+
+			private static IEnumerable<string> GetClassesForType(Type type)
 			{
-				return Assembly.Load(UnoUIRuntimeWebAssemblyName);
+				while (type != null && type != typeof(object))
+				{
+					yield return type.Name.ToLowerInvariant();
+					type = type.BaseType;
+				}
 			}
 		}
 	}
