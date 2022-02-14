@@ -354,13 +354,14 @@ namespace Windows.UI.Xaml.Controls
 
 #if NET6_0_OR_GREATER
 			var characterIndex = (int)_layoutManager.GetCharacterIndex
+			(pointInTextContainer, _layoutManager.TextContainers.FirstOrDefault(), out partialFraction);
 #else
 #pragma warning disable CS0618 // Type or member is obsolete (For VS2017 compatibility)
 			var characterIndex = (int)_layoutManager.CharacterIndexForPoint
+			(pointInTextContainer, _layoutManager.TextContainers.FirstOrDefault(), ref partialFraction);
 #pragma warning restore CS0618 // Type or member is obsolete
 #endif
 
-			(pointInTextContainer, _layoutManager.TextContainers.FirstOrDefault(), ref partialFraction);
 
 			return characterIndex;
 		}
