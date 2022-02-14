@@ -22,6 +22,9 @@ Follow this step-by-step guide, and you’ll learn how to build this page.
 - How to Edit the Padding Around the Items?
 - How to Make the Content Centered Vertically?
 
+## Prerequisites and setup
+To get started with the Uno Figma plugin, review the ![Getting started](../../getting-started-uno-figma.md) guide.
+
 ## Step 1: Setting the page template
 
 ![Creating a new page](images/01_create-new-page.png)
