@@ -1,4 +1,4 @@
-# Let’s Build a Simple Login Page!
+# How to build a simple login page with the Uno Figma plugin, for designers
 
 Follow this step-by-step guide, and you’ll learn how to build this page.
 
