@@ -1,7 +1,7 @@
 parameters:
   DotNetVersion: '6.0.200'
   UnoCheck_Version: '1.1.0-dev.22'
-  UnoCheck_Manifest: 'https://raw.githubusercontent.com/unoplatform/uno.check/b7004fc21a0b8f3e1a3983d45ff9bef16bc8dac5/manifests/uno.ui-preview.manifest.json'
+  UnoCheck_Manifest: 'https://raw.githubusercontent.com/unoplatform/uno.check/f131841be8a695190cbda809c5fcb67e77e3c621/manifests/uno.ui-preview.manifest.json'
   Dotnet_Root: '/usr/local/share/dotnet/'
   Dotnet_Tools: '~/.dotnet/tools'
 
@@ -33,6 +33,6 @@ steps:
 
   - bash: |
       dotnet tool update --global uno.check --version ${{ parameters.UnoCheck_Version }} --add-source https://api.nuget.org/v3/index.json
-      uno-check --ci --non-interactive --fix --skip androidsdk --skip gtk3 --skip xcode --skip vswin --skip dotnet --skip vsmac --manifest ${{ parameters.UnoCheck_Manifest }}
+      uno-check --ci --non-interactive --fix --skip androidsdk --skip gtk3 --skip xcode --skip vswin --skip vsmac --manifest ${{ parameters.UnoCheck_Manifest }}
     displayName: Install .NET Workloads
     retryCountOnTaskFailure: 3
